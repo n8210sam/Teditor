@@ -54,7 +54,8 @@ jobs:
 
       - name: Initialize Bubblewrap project (non-interactive)
         run: |
-          echo "Y" | bubblewrap init --manifest=http://localhost:3000/manifest.json \
+          # 自動回答所有互動問題：JDK (Yes) 和 Android SDK (Yes)
+          echo -e "Y\nY" | bubblewrap init --manifest=http://localhost:3000/manifest.json \
             --directory=./twa-project
         env:
           CI: true
