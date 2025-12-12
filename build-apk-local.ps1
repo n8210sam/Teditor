@@ -6,14 +6,18 @@ Write-Host "Build Android APK Locally" -ForegroundColor Cyan
 Write-Host "======================================" -ForegroundColor Cyan
 Write-Host ""
 
-# Check if Next.js server is running
-Write-Host "[1/4] Checking Next.js server..." -ForegroundColor Yellow
+# Set your GitHub Pages URL
+$GITHUB_PAGES_URL = "https://n8210sam.github.io/Teditor"
+
+# Check if GitHub Pages is accessible
+Write-Host "[1/4] Checking GitHub Pages..." -ForegroundColor Yellow
 try {
-    $response = Invoke-WebRequest -Uri "http://localhost:3000/manifest.json" -TimeoutSec 5 -ErrorAction Stop
-    Write-Host "[OK] Next.js server is running" -ForegroundColor Green
+    $response = Invoke-WebRequest -Uri "$GITHUB_PAGES_URL/manifest.json" -TimeoutSec 10 -ErrorAction Stop
+    Write-Host "[OK] GitHub Pages is accessible" -ForegroundColor Green
 } catch {
-    Write-Host "[ERROR] Next.js server is not running" -ForegroundColor Red
-    Write-Host "Please run 'pnpm dev' first" -ForegroundColor Yellow
+    Write-Host "[ERROR] Cannot access GitHub Pages" -ForegroundColor Red
+    Write-Host "URL: $GITHUB_PAGES_URL" -ForegroundColor Yellow
+    Write-Host "Please verify the URL is correct and the site is deployed" -ForegroundColor Yellow
     exit 1
 }
 
@@ -32,7 +36,7 @@ Write-Host "Please answer 'Y' when prompted to install JDK and Android SDK" -For
 Write-Host "This will take 10-15 minutes on first run" -ForegroundColor Gray
 Write-Host ""
 
-bubblewrap init --manifest=http://localhost:3000/manifest.json --directory=./twa-project
+bubblewrap init --manifest=$GITHUB_PAGES_URL/manifest.json --directory=./twa-project
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""

@@ -20,3 +20,10 @@ tests/
 
 # agent
 tmp_*
+
+# Android / TWA
+twa-project/
+*.apk
+*.aab
+*.keystore
+android.keystore
