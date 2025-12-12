@@ -1,0 +1,22 @@
+# Node
+node_modules/
+.next/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.env
+
+# Rust/Build
+/target/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# dev
+tests/
+
+# agent
+tmp_*
