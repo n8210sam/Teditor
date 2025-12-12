@@ -3,8 +3,8 @@ const nextConfig = {
   // Enable static export for GitHub Pages
   output: 'export',
   
-  // Base path for GitHub Pages (uncomment and update with your repo name)
-  // basePath: process.env.NODE_ENV === 'production' ? '/Teditor' : '',
+  // Base path for GitHub Pages
+  basePath: '/Teditor',
   
   typescript: {
     ignoreBuildErrors: true,
