@@ -45,12 +45,13 @@ jobs:
       - name: Install Bubblewrap CLI
         run: npm install -g @bubblewrap/cli
 
-      - name: Start Next.js server
+      - name: Install and start static server
         run: |
-          pnpm start &
+          npm install -g serve
+          serve out -l 3000 &
           echo $! > server.pid
-          sleep 10
-          curl -f http://localhost:3000 || (echo "Server failed to start" && exit 1)
+          sleep 5
+          curl -f http://localhost:3000/Teditor/ || (echo "Server failed to start" && exit 1)
 
       - name: Initialize Bubblewrap project (non-interactive mode)
         timeout-minutes: 20
@@ -63,14 +64,14 @@ jobs:
           TextEdit
           com.textedit.app
           localhost:3000
-          /
+          /Teditor/
           standalone
           #1a1a1a
-          http://localhost:3000/apple-icon.png
+          http://localhost:3000/Teditor/apple-icon.png
           ANSWERS
           
           # Feed answers to bubblewrap init
-          cat answers.txt | bubblewrap init --manifest=http://localhost:3000/manifest.json --directory=./twa-project || {
+          cat answers.txt | bubblewrap init --manifest=http://localhost:3000/Teditor/manifest.json --directory=./twa-project || {
             echo "Bubblewrap init failed with exit code $?"
             echo "Trying alternative method..."
             timeout 300 sh -c 'yes Y | bubblewrap init --manifest=http://localhost:3000/manifest.json --directory=./twa-project' || true
@@ -93,7 +94,7 @@ jobs:
         env:
           CI: true
 
-      - name: Stop Next.js server
+      - name: Stop static server
         if: always()
         run: |
           if [ -f server.pid ]; then
