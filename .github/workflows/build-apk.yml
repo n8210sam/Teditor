@@ -45,30 +45,18 @@ jobs:
       - name: Install Bubblewrap CLI
         run: npm install -g @bubblewrap/cli
 
-      - name: Verify build output
+      - name: Wait for GitHub Pages deployment
         run: |
-          echo "=== Checking out/ directory structure ==="
-          ls -la out/
-          echo ""
-          echo "=== Checking if index.html exists ==="
-          test -f out/index.html && echo "✓ index.html exists" || echo "✗ index.html missing"
-          echo ""
-          echo "=== Checking manifest.json content ==="
-          cat out/manifest.json | grep start_url
-
-      - name: Install and start static server
-        run: |
-          npm install -g serve
-          serve out -l 3000 &
-          echo $! > server.pid
-          sleep 5
-          echo ""
-          echo "=== Testing server endpoints ==="
-          curl -I http://localhost:3000/ || echo "Root failed"
-          curl -I http://localhost:3000/index.html || echo "index.html failed"
-          curl -I http://localhost:3000/Teditor/ || echo "/Teditor/ failed"
-          echo ""
-          curl -f http://localhost:3000/Teditor/ || (echo "Server failed to start" && exit 1)
+          echo "Waiting for GitHub Pages to be accessible..."
+          for i in {1..30}; do
+            if curl -f https://n8210sam.github.io/Teditor/manifest.json > /dev/null 2>&1; then
+              echo "✓ GitHub Pages is ready"
+              break
+            fi
+            echo "Attempt $i/30: GitHub Pages not ready yet, waiting 10s..."
+            sleep 10
+          done
+          curl -f https://n8210sam.github.io/Teditor/manifest.json || (echo "GitHub Pages not accessible" && exit 1)
 
       - name: Initialize Bubblewrap project (non-interactive mode)
         timeout-minutes: 20
@@ -80,15 +68,15 @@ jobs:
           TextEdit
           TextEdit
           com.textedit.app
-          localhost:3000
+          n8210sam.github.io
           /Teditor/
           standalone
           #1a1a1a
-          http://localhost:3000/Teditor/apple-icon.png
+          https://n8210sam.github.io/Teditor/apple-icon.png
           ANSWERS
           
           # Feed answers to bubblewrap init
-          cat answers.txt | bubblewrap init --manifest=http://localhost:3000/Teditor/manifest.json --directory=./twa-project || {
+          cat answers.txt | bubblewrap init --manifest=https://n8210sam.github.io/Teditor/manifest.json --directory=./twa-project || {
             echo "Bubblewrap init failed with exit code $?"
             echo "Trying alternative method..."
             timeout 300 sh -c 'yes Y | bubblewrap init --manifest=http://localhost:3000/manifest.json --directory=./twa-project' || true
@@ -111,13 +99,6 @@ jobs:
         env:
           CI: true
 
-      - name: Stop static server
-        if: always()
-        run: |
-          if [ -f server.pid ]; then
-            kill $(cat server.pid) || true
-            rm server.pid
-          fi
 
       - name: Find and prepare APK
         run: |
