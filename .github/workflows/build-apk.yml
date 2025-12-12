@@ -45,12 +45,29 @@ jobs:
       - name: Install Bubblewrap CLI
         run: npm install -g @bubblewrap/cli
 
+      - name: Verify build output
+        run: |
+          echo "=== Checking out/ directory structure ==="
+          ls -la out/
+          echo ""
+          echo "=== Checking if index.html exists ==="
+          test -f out/index.html && echo "✓ index.html exists" || echo "✗ index.html missing"
+          echo ""
+          echo "=== Checking manifest.json content ==="
+          cat out/manifest.json | grep start_url
+
       - name: Install and start static server
         run: |
           npm install -g serve
           serve out -l 3000 &
           echo $! > server.pid
           sleep 5
+          echo ""
+          echo "=== Testing server endpoints ==="
+          curl -I http://localhost:3000/ || echo "Root failed"
+          curl -I http://localhost:3000/index.html || echo "index.html failed"
+          curl -I http://localhost:3000/Teditor/ || echo "/Teditor/ failed"
+          echo ""
           curl -f http://localhost:3000/Teditor/ || (echo "Server failed to start" && exit 1)
 
       - name: Initialize Bubblewrap project (non-interactive mode)
