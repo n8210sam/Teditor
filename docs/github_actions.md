@@ -6,6 +6,110 @@
 
 ---
 
+### **版本 7：靜態導出 + Serve（當前版本）**
+
+**日期：** 2025-01-12
+
+**問題（版本 6.1 後）：**
+```
+Error: "next start" does not work with "output: export" configuration.
+curl: (22) The requested URL returned error: 404
+Server failed to start
+```
+
+**原因分析：**
+1. **`next start` 不支援靜態導出**
+   - `next.config.mjs` 設定了 `output: 'export'`
+   - `pnpm start` 會執行 `next start`，但靜態導出模式不支援
+   - 錯誤訊息建議使用 `npx serve@latest out`
+
+2. **對 basePath 的錯誤理解（關鍵錯誤）** ⚠️
+   - ❌ **錯誤理解**：以為 `basePath: '/Teditor'` 會讓 Next.js 建置到 `out/Teditor/`
+   - ✅ **實際情況**：檔案還是在 `out/` 根目錄，basePath 只影響路由和資源路徑
+   - ❌ **錯誤做法**：`serve out/Teditor` → 404（因為 `out/Teditor/` 目錄不存在）
+   - ✅ **正確做法**：`serve out` + 訪問 `/Teditor/`
+
+**解決方案：**
+
+```yaml
+- name: Build Next.js app
+  run: pnpm build
+
+- name: Install and start static server
+  run: |
+    npm install -g serve
+    serve out -l 3000 &              # 服務 out/ 根目錄
+    echo $! > server.pid
+    sleep 5
+    curl -f http://localhost:3000/Teditor/ || (echo "Server failed to start" && exit 1)
+
+- name: Initialize Bubblewrap project (non-interactive mode)
+  timeout-minutes: 20
+  run: |
+    cat > answers.txt << 'ANSWERS'
+    Y
+    Y
+    TextEdit
+    TextEdit
+    com.textedit.app
+    localhost:3000
+    /Teditor/                            # basePath 路徑
+    standalone
+    #1a1a1a
+    http://localhost:3000/Teditor/apple-icon.png
+    ANSWERS
+    
+    cat answers.txt | bubblewrap init --manifest=http://localhost:3000/Teditor/manifest.json --directory=./twa-project || {
+      echo "Bubblewrap init failed with exit code $?"
+      echo "Trying alternative method..."
+      timeout 300 sh -c 'yes Y | bubblewrap init --manifest=http://localhost:3000/manifest.json --directory=./twa-project' || true
+    }
+    
+    if [ ! -d "twa-project" ]; then
+      echo "ERROR: Bubblewrap init failed - twa-project directory not created"
+      exit 1
+    fi
+    
+    echo "SUCCESS: Bubblewrap project initialized"
+  env:
+    CI: true
+```
+
+**狀態：** 🔄 待測試
+
+**關鍵改進：**
+1. ✅ 使用 `serve` 替代 `next start`
+2. ✅ **正確理解 basePath**：檔案在 `out/`，但路由需要 `/Teditor/`
+3. ✅ `serve out` 服務根目錄，訪問時加上 `/Teditor/`
+4. ✅ 所有 Bubblewrap 路徑都使用完整路徑（包含 `/Teditor/`）
+
+**Next.js basePath 正確理解：**
+
+`basePath: '/Teditor'` 的作用：
+- ❌ **不會**改變輸出目錄結構（檔案還是在 `out/`，而非 `out/Teditor/`）
+- ✅ **會**在 HTML 中的所有內部連結前加上 `/Teditor/`
+- ✅ **會**在資源路徑（CSS、JS、圖片）前加上 `/Teditor/`
+- ✅ **會**在 manifest.json 的路徑前加上 `/Teditor/`
+
+**路徑對應表：**
+
+| 檔案系統 | Serve 服務 | 訪問 URL |
+|---------|-----------|---------|
+| `out/manifest.json` | `out/` 根目錄 | `http://localhost:3000/Teditor/manifest.json` |
+| `out/apple-icon.png` | `out/` 根目錄 | `http://localhost:3000/Teditor/apple-icon.png` |
+| `out/index.html` | `out/` 根目錄 | `http://localhost:3000/Teditor/` |
+
+**本地測試驗證：** ✅
+```bash
+pnpm build
+serve out -l 3000
+curl http://localhost:3000/Teditor/         # 200 OK
+curl http://localhost:3000/Teditor/manifest.json  # 200 OK
+curl http://localhost:3000/Teditor/apple-icon.png # 200 OK
+```
+
+---
+
 ## 🛠️ 最終採用方案
 
 **工具選擇：Bubblewrap CLI**
@@ -324,17 +428,68 @@ EOF
 - 使用 `|| true` 避免中斷時返回非零退出碼
 - 設定 `CI=true` 環境變數可能影響某些工具的行為
 
-### **2. Bubblewrap 的互動問題清單**
-1. JDK 安裝確認
-2. Android SDK 安裝確認
-3. （可能還有其他問題，待實際執行時確認）
+### **2. Next.js 靜態導出與伺服器**
+- ❌ `next start` - 不支援 `output: 'export'` 模式
+- ✅ `serve` - 專為靜態檔案設計的輕量伺服器
+- ✅ `serve out/Teditor` - 當有 basePath 時，直接服務子目錄
+- ⚠️ basePath 會讓 Next.js 建置到子目錄（`out/<basePath>/`）
 
-### **3. Next.js 伺服器管理**
+### **3. basePath 路徑邏輯（關鍵理解）** ⚠️
+
+**Next.js basePath 的真實行為：**
+```javascript
+basePath: '/Teditor'
+```
+
+**實際效果：**
+- ✅ 檔案輸出位置：**仍然在 `out/` 根目錄**
+- ✅ HTML 內部連結：自動加上 `/Teditor/` 前綴
+- ✅ 資源路徑（JS/CSS/圖片）：自動加上 `/Teditor/` 前綴
+- ✅ manifest.json 路徑：自動加上 `/Teditor/` 前綴
+
+**錯誤理解 vs 正確理解：**
+
+| 項目 | ❌ 錯誤理解 | ✅ 正確理解 |
+|------|-----------|-----------|
+| 輸出目錄 | `out/Teditor/` | `out/` |
+| Serve 指令 | `serve out/Teditor` | `serve out` |
+| 訪問 URL | `http://localhost:3000/` | `http://localhost:3000/Teditor/` |
+| manifest 路徑 | `/manifest.json` | `/Teditor/manifest.json` |
+
+**實際檔案結構：**
+```
+out/
+├── index.html           ← basePath 讓內部連結變成 /Teditor/xxx
+├── manifest.json        ← 內容已包含 /Teditor/ 前綴
+├── apple-icon.png
+└── _next/
+    └── static/...
+```
+
+**Serve 方式：**
+```bash
+serve out                          # 服務 out/ 根目錄
+訪問：http://localhost:3000/Teditor/  # 需要加 basePath
+```
+
+### **4. Bubblewrap 的互動問題清單**
+1. JDK 安裝確認（Y/N）
+2. Android SDK 安裝確認（Y/N）
+3. Application name（文字）
+4. Short name（文字）
+5. Application ID / Package name（文字，需要格式 `com.example.app`）
+6. Host（文字）
+7. Start URL（文字）
+8. Display mode（文字）
+9. Status bar color（文字）
+10. Icon URL（文字）
+
+### **5. 靜態伺服器管理**
 - 使用 `&` 在背景執行
 - 記錄 PID 以便後續清理
 - 使用 `if: always()` 確保清理步驟總是執行
 
-### **4. APK 檔案查找**
+### **6. APK 檔案查找**
 - Bubblewrap 產生的 APK 位置可能不固定
 - 使用 `find` 指令遞迴搜尋所有 `.apk` 檔案
 - 統一複製到 `apk-output/` 目錄便於管理
@@ -407,7 +562,9 @@ git push --tags
 | v3 (Single Answer) | ❌ 失敗 | 仍有第二個互動問題 |
 | v4 (echo -e Multi-line) | ❌ 失敗 | echo -e 無法正確傳遞多行 |
 | v5 (yes Command) | ❌ 失敗 | 無限循環超過 40 分鐘 |
-| v6 (Pre-configured Answers) | 🔄 待測試 | 目前版本 |
+| v6 (Pre-configured Answers) | ❌ 失敗 | YAML 語法錯誤 |
+| v6.1 (Fixed YAML Syntax) | ❌ 失敗 | next start 不支援靜態導出 |
+| v7 (Static Export + Serve) | 🔄 待測試 | 目前版本 |
 
 ---
 
