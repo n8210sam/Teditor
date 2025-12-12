@@ -65,7 +65,7 @@ Unable to resolve action pwa-builder/pwabuilder-github-action, repository not fo
 **錯誤：**
 ```
 ? Do you want Bubblewrap to install the JDK (recommended)?
-  (Enter "No" to use your own JDK 17 installation) (Y/n) 
+  (Enter "No" to use your own JDK 17 installation) (Y/n)
 Error: Process completed with exit code 130.
 ```
 
@@ -106,7 +106,7 @@ Error: Process completed with exit code 130.
 Downloading JDK 17 to /home/runner/.bubblewrap/jdk
 ...
 ? Do you want Bubblewrap to install the Android SDK (recommended)?
-  (Enter "No" to use your own Android SDK installation) (Y/n) 
+  (Enter "No" to use your own Android SDK installation) (Y/n)
 Error: Process completed with exit code 130.
 ```
 
@@ -139,7 +139,7 @@ Error: Process completed with exit code 130.
 ? Do you want Bubblewrap to install the JDK (recommended)? Yes
 Y
 Downloading JDK 17...
-? Do you want Bubblewrap to install the Android SDK (recommended)? 
+? Do you want Bubblewrap to install the Android SDK (recommended)?
 Error: Process completed with exit code 130.
 ```
 
@@ -153,7 +153,7 @@ Error: Process completed with exit code 130.
 
 ---
 
-### **版本 5：使用 yes 指令（當前版本）**
+### **版本 5：使用 yes 指令**
 
 **日期：** 2024-01-XX
 
@@ -215,15 +215,102 @@ Error: Process completed with exit code 130.
     if-no-files-found: error
 ```
 
+**錯誤：**
+```
+41m 52s
+Run # 使用 yes 指令自動回答所有問題為 Yes
+...
+y
+y
+#49 y
+卡在第 27次回答 y
+```
+
+**原因：**
+- `yes` 指令進入無限循環
+- Bubblewrap 在等待**非 Y/N** 的輸入（例如：應用名稱、包名、網址等）
+- `yes` 只會輸出 "y"，無法提供其他類型的答案
+- 導致建置卡住超過 40 分鐘
+
+**關鍵問題：**
+Bubblewrap 的互動問題不只是 Y/N，還包括：
+1. Application name (文字輸入)
+2. Short name (文字輸入)
+3. Application ID (文字輸入)
+4. Host (文字輸入)
+5. Start URL (文字輸入)
+6. Display mode (選項)
+7. Status bar color (文字輸入)
+8. Icon URL (文字輸入)
+
+**解決方案：**
+需要提供所有問題的完整答案，不能只回答 Y
+
+---
+
+### **版本 6：預先配置所有答案（當前版本）**
+
+**日期：** 2024-01-XX
+
+**程式碼：**
+```yaml
+- name: Initialize Bubblewrap project (non-interactive mode)
+  timeout-minutes: 20
+  run: |
+    # 建立包含所有答案的檔案
+    cat > answers.txt << 'EOF'
+Y
+Y
+TextEdit
+TextEdit
+com.textedit.app
+localhost:3000
+/
+standalone
+#1a1a1a
+http://localhost:3000/apple-icon.png
+EOF
+    
+    # 使用 cat 提供所有輸入
+    cat answers.txt | bubblewrap init --manifest=http://localhost:3000/manifest.json --directory=./twa-project || {
+      echo "Bubblewrap init failed with exit code $?"
+      echo "Trying alternative method..."
+      
+      # 備用方案：使用 yes 但設定超時
+      timeout 300 sh -c 'yes Y | bubblewrap init --manifest=http://localhost:3000/manifest.json --directory=./twa-project' || true
+    }
+    
+    # 檢查是否成功建立專案
+    if [ ! -d "twa-project" ]; then
+      echo "ERROR: Bubblewrap init failed - twa-project directory not created"
+      exit 1
+    fi
+    
+    echo "SUCCESS: Bubblewrap project initialized"
+  env:
+    CI: true
+```
+
 **狀態：** 🔄 待測試
 
 **說明：**
-- 使用 `yes` 指令持續輸出 "y"，自動回答所有 Y/n 問題
-- 加上 `|| true` 避免 yes 指令被中斷時導致失敗（正常行為）
-- `yes` 會持續運行直到 bubblewrap init 完成並關閉 stdin
-- 設定 `CI=true` 環境變數告知 Bubblewrap 在 CI 環境運行
-- 啟動臨時 Next.js 伺服器供 Bubblewrap 讀取 manifest.json
-- 建置完成後自動清理伺服器進程
+- 建立 `answers.txt` 包含所有互動問題的答案
+- 使用 `cat answers.txt | bubblewrap init` 一次性提供所有輸入
+- 設定 20 分鐘超時避免無限等待
+- 提供備用方案：如果第一次失敗，使用帶超時的 yes 指令
+- 驗證 `twa-project` 目錄是否成功建立
+
+**答案清單：**
+1. `Y` - 安裝 JDK
+2. `Y` - 安裝 Android SDK
+3. `TextEdit` - Application name
+4. `TextEdit` - Short name
+5. `com.textedit.app` - Application ID (package name)
+6. `localhost:3000` - Host
+7. `/` - Start URL
+8. `standalone` - Display mode
+9. `#1a1a1a` - Status bar color (深色)
+10. `http://localhost:3000/apple-icon.png` - Icon URL
 
 ---
 
@@ -231,8 +318,10 @@ Error: Process completed with exit code 130.
 
 ### **1. 互動式 CLI 在 CI 環境的處理**
 - ❌ `echo -e "Y\nY"` - 在某些環境下無法正確處理多行輸入
-- ✅ `yes` 指令 - 持續輸出 "y" 直到程序完成，最可靠的方法
-- 使用 `|| true` 避免 yes 被中斷時返回非零退出碼
+- ❌ `yes` 指令 - 只能回答 Y/N，無法處理需要文字輸入的問題
+- ✅ **預先配置答案檔** - 將所有答案寫入檔案，使用 `cat answers.txt | command`
+- ✅ 設定 `timeout-minutes` 避免無限等待
+- 使用 `|| true` 避免中斷時返回非零退出碼
 - 設定 `CI=true` 環境變數可能影響某些工具的行為
 
 ### **2. Bubblewrap 的互動問題清單**
@@ -317,7 +406,62 @@ git push --tags
 | v2 (Basic Bubblewrap) | ❌ 失敗 | 互動式輸入問題 |
 | v3 (Single Answer) | ❌ 失敗 | 仍有第二個互動問題 |
 | v4 (echo -e Multi-line) | ❌ 失敗 | echo -e 無法正確傳遞多行 |
-| v5 (yes Command) | 🔄 待測試 | 目前版本 |
+| v5 (yes Command) | ❌ 失敗 | 無限循環超過 40 分鐘 |
+| v6 (Pre-configured Answers) | 🔄 待測試 | 目前版本 |
+
+---
+
+## 🔄 部署記錄
+
+### **2025-01-XX - 版本 5 推送嘗試**
+
+**準備推送：**
+```bash
+git add .
+git commit -m "fix: 使用 yes 指令處理 Bubblewrap 互動問題並新增詳細文件記錄"
+git push origin main
+```
+
+
+---
+
+# 不用 github action 在本地包裝產出.apk
+Bubblewrap CLI
+```powershell
+# 1. 安裝 Bubblewrap CLI
+npm install -g @bubblewrap/cli
+
+# 2. 確保已安裝 JDK 17 和 Android SDK
+# Windows: 下載安裝 Android Studio 或 JDK
+
+# 3. 啟動 Next.js 開發伺服器
+pnpm dev
+
+# 4. 初始化 Bubblewrap 專案（互動式）
+bubblewrap init --manifest=http://localhost:3000/manifest.json
+
+# 5. 建置 APK
+cd twa-project
+bubblewrap build
+```
+
+產出位置： twa-project/app/build/outputs/apk/release/app-release-unsigned.apk
+
+
+## 🏠 本地建置
+
+不想使用 GitHub Actions，可以在本地建置 APK。
+
+詳細步驟請參考：[本地建置 APK 指南](./build-apk-locally.md)
+
+**快速指令：**
+```powershell
+# 1. 啟動 Next.js 伺服器
+pnpm dev
+
+# 2. 執行建置腳本
+.\build-apk-local.ps1
+```
 
 ---
 

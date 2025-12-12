@@ -52,11 +52,42 @@ jobs:
           sleep 10
           curl -f http://localhost:3000 || (echo "Server failed to start" && exit 1)
 
-      - name: Initialize Bubblewrap project (non-interactive)
+      - name: Initialize Bubblewrap project (non-interactive mode)
+        timeout-minutes: 20
         run: |
-          # 使用 yes 指令自動回答所有問題為 Yes
-          yes | bubblewrap init --manifest=http://localhost:3000/manifest.json \
-            --directory=./twa-project || true
+          # 方案：提供所有預設參數避免互動
+          # 使用 expect 或 printf 模擬輸入
+          
+          # 建立自動回答腳本
+          cat > answers.txt << 'EOF'
+Y
+Y
+TextEdit
+TextEdit
+com.textedit.app
+localhost:3000
+/
+standalone
+#1a1a1a
+http://localhost:3000/apple-icon.png
+EOF
+          
+          # 使用 cat 提供輸入
+          cat answers.txt | bubblewrap init --manifest=http://localhost:3000/manifest.json --directory=./twa-project || {
+            echo "Bubblewrap init failed with exit code $?"
+            echo "Trying alternative method..."
+            
+            # 備用方案：使用 yes 但設定超時
+            timeout 300 sh -c 'yes Y | bubblewrap init --manifest=http://localhost:3000/manifest.json --directory=./twa-project' || true
+          }
+          
+          # 檢查是否成功建立專案
+          if [ ! -d "twa-project" ]; then
+            echo "ERROR: Bubblewrap init failed - twa-project directory not created"
+            exit 1
+          fi
+          
+          echo "SUCCESS: Bubblewrap project initialized"
         env:
           CI: true
 
