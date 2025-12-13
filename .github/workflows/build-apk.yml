@@ -71,31 +71,38 @@ jobs:
           done
           curl -f https://n8210sam.github.io/Teditor/manifest.json || (echo "GitHub Pages not accessible" && exit 1)
 
-      - name: Initialize Bubblewrap project (non-interactive mode)
+      - name: Initialize Bubblewrap project (with expect)
         timeout-minutes: 20
         run: |
-          # Create answer file with proper quoting
-          cat > answers.txt << 'ANSWERS'
-          Y
-          Y
-          TextEdit
-          TextEdit
-          com.textedit.app
-          n8210sam.github.io
-          /Teditor/
-          standalone
-          #1a1a1a
-          https://n8210sam.github.io/Teditor/apple-icon.png
-          ANSWERS
+          echo "=== Installing expect ==="
+          sudo apt-get update -qq && sudo apt-get install -y expect
           
-          echo "=== Answers file created ==="
-          cat answers.txt
-          echo ""
-          echo "=== Running bubblewrap init ==="
+          echo "=== Creating expect script ==="
+          cat > bubblewrap_init.exp << 'EXPECT_SCRIPT'
+          #!/usr/bin/expect -f
+          set timeout 600
           
-          # Feed answers to bubblewrap init with timeout
-          timeout 600 sh -c 'cat answers.txt | bubblewrap init --manifest=https://n8210sam.github.io/Teditor/manifest.json --directory=./twa-project' 2>&1 || {
-            echo "Bubblewrap init failed or timed out with exit code $?"
+          spawn bubblewrap init --manifest=https://n8210sam.github.io/Teditor/manifest.json --directory=./twa-project
+          
+          expect "Do you want Bubblewrap to install the JDK*" { send "Y\r" }
+          expect "Do you want Bubblewrap to install the Android SDK*" { send "Y\r" }
+          expect "Application name*" { send "\r" }
+          expect "Short name*" { send "\r" }
+          expect "Application ID*" { send "com.textedit.app\r" }
+          expect "Host*" { send "n8210sam.github.io\r" }
+          expect "Start URL*" { send "/Teditor/\r" }
+          expect "Display mode*" { send "\r" }
+          expect "Status bar color*" { send "\r" }
+          expect "Icon URL*" { send "\r" }
+          
+          expect eof
+          EXPECT_SCRIPT
+          
+          chmod +x bubblewrap_init.exp
+          
+          echo "=== Running bubblewrap init with expect ==="
+          ./bubblewrap_init.exp || {
+            echo "Bubblewrap init failed with exit code $?"
             exit 1
           }
           

@@ -117,7 +117,50 @@ Get-ChildItem -Recurse -Filter "*.apk"
 
 ## ⚠️ 常見問題
 
-### **Q1: Bubblewrap 卡在等待輸入**
+### **Q1: Gradle 記憶體不足錯誤** ⚠️
+
+**錯誤訊息：**
+```
+Error occurred during initialization of VM
+Could not reserve enough space for 1572864KB object heap
+```
+
+**原因：**
+- Bubblewrap 預設 Gradle 使用 1536MB (1.5GB) 記憶體
+- 系統可用記憶體不足以分配
+
+**解決方案：**
+```powershell
+# 停止 Gradle daemon
+cd twa-project
+.\gradlew.bat --stop
+
+# 修改 gradle.properties
+# 將 org.gradle.jvmargs=-Xmx1536m
+# 改為 org.gradle.jvmargs=-Xmx512m -XX:MaxMetaspaceSize=256m
+
+# 清除快取
+Remove-Item -Recurse -Force "$env:USERPROFILE\.gradle\daemon"
+
+# 重新建置
+bubblewrap build
+```
+
+**測試結果：❌ 降低記憶體無效**
+
+經過測試發現：
+- 修改 `gradle.properties` 後，Gradle daemon 仍使用舊配置
+- 清除快取、停止 daemon 都無法解決
+- Gradle 的全域配置優先於專案配置
+- **結論：在記憶體受限的環境下無法建置 APK**
+
+**建議：**
+1. 使用記憶體充足的電腦（至少 4GB 可用記憶體）
+2. 或使用 PWA Builder 網站手動建置
+
+---
+
+### **Q2: Bubblewrap 卡在等待輸入**
 **A:** 請手動輸入 `Y` 並按 Enter。PowerShell 的自動輸入在某些情況下無法正常工作。
 
 ### **Q2: 找不到 JDK 或 Android SDK**

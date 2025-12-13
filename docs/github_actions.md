@@ -136,7 +136,127 @@ echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > $ANDROID_HOME/licenses/android
 timeout 600 sh -c 'cat answers.txt | bubblewrap init ...'
 ```
 
-**狀態：** 🔄 測試中
+**問題持續：答案檔沒有正確餵給 Bubblewrap**
+
+```
+Extracting JDK...
+? Do you want Bubblewrap to install the Android SDK? 
+Bubblewrap init failed or timed out with exit code 130
+```
+
+**根本原因：**
+`cat answers.txt | bubblewrap init` 的問題：
+- 第一個問題（JDK）讀取了 "Y"
+- JDK 下載和解壓縮過程中，stdin 可能被消耗或中斷
+- 第二個問題（Android SDK）時，stdin 已經沒有內容了
+- 導致等待輸入超時
+
+**解決方案（版本 8.2）：使用 expect**
+
+`expect` 是專門處理互動式程式的工具：
+- 可以等待特定提示再回答
+- 不會因為中間的處理過程而失去輸入
+- 有 timeout 控制
+
+```bash
+sudo apt-get install -y expect
+
+cat > bubblewrap_init.exp << 'EXPECT_SCRIPT'
+#!/usr/bin/expect -f
+set timeout 600
+
+spawn bubblewrap init --manifest=...
+
+expect "Do you want Bubblewrap to install the JDK*" { send "Y\r" }
+expect "Do you want Bubblewrap to install the Android SDK*" { send "Y\r" }
+expect "Application name*" { send "\r" }
+# ... 其他問題
+EXPECT_SCRIPT
+
+./bubblewrap_init.exp
+```
+
+**狀態：** 🔄 測試中（使用 expect）
+
+---
+
+## 💔 **現實檢查：兩條路都走不通**
+
+### **GitHub Actions：** ❌ 失敗 15+ 次
+- 互動問題難以自動化
+- Bubblewrap 在 CI 環境極不穩定
+- 每次嘗試都卡在不同的地方
+
+### **本地建置：** ❌ 失敗
+- Gradle 需要 1.5GB+ 記憶體
+- 系統記憶體不足
+- 降低記憶體配置無效（Gradle daemon 快取問題）
+
+### **剩餘選項：**
+1. **PWA Builder 網站** - 手動上傳，簡單但不自動化
+2. **Capacitor** - 需要重新配置整個專案
+3. **放棄 Android APK** - 只保留 PWA 網頁版
+4. **升級硬體** - 增加系統記憶體（治本）
+
+---
+
+## 📝 本地建置問題記錄
+
+### **Gradle 記憶體不足問題**
+
+**發生時間：** 本地建置 APK 時
+
+**錯誤訊息：**
+```
+Error occurred during initialization of VM
+Could not reserve enough space for 1572864KB object heap
+```
+
+**原因：**
+- Bubblewrap 預設 Gradle 使用 1536MB 記憶體
+- 系統可用記憶體不足
+
+**解決方案：**
+修改 `twa-project/gradle.properties`：
+```properties
+# 從
+org.gradle.jvmargs=-Xmx1536m
+
+# 改為
+org.gradle.jvmargs=-Xmx512m -XX:MaxMetaspaceSize=256m
+```
+
+**步驟：**
+```powershell
+cd twa-project
+.\gradlew.bat --stop  # 停止 Gradle daemon
+# 修改 gradle.properties
+Remove-Item -Recurse -Force "$env:USERPROFILE\.gradle\daemon"  # 清除快取
+bubblewrap build  # 重新建置
+```
+
+**狀態：** ✅ 已修正（記憶體降低為 512MB）
+
+**重要：Gradle daemon 快取問題**
+即使修改了 `twa-project/gradle.properties`，Gradle daemon 仍會使用舊配置。
+必須執行：
+```powershell
+cd twa-project
+.\gradlew.bat --stop  # 停止 daemon
+Remove-Item -Recurse -Force "$env:USERPROFILE\.gradle\daemon"  # 清除快取
+bubblewrap build  # 重新建置
+```
+
+**測試結果：❌ 失敗**
+
+**問題：Gradle daemon 快取頑固**
+- 修改 `twa-project/gradle.properties` 無效
+- `.\gradlew.bat --stop` 需要 JAVA_HOME
+- 清除 `~/.gradle/daemon` 後，daemon 仍讀取舊配置
+- **根本問題：Gradle 的全域配置優先於專案配置**
+
+**結論：**
+本地建置在記憶體受限的環境下**無法成功**。Gradle 需要至少 1.5GB 記憶體，降低配置無效。
 
 **優點：**
 - ✅ 不依賴本地 serve
