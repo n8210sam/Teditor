@@ -22,6 +22,7 @@ tests/
 tmp_*
 
 # Android / TWA
+out/
 twa-project/
 *.apk
 *.aab

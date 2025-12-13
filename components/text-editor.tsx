@@ -5,48 +5,26 @@ import type React from "react"
 import { useState, useRef, useCallback, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  FileText,
-  Code,
-  Eye,
-  Upload,
-  FileUp,
-  Bold,
-  Italic,
-  Underline,
-  LinkIcon,
-  List,
-  ListOrdered,
-  AlignLeft,
-  AlignCenter,
-  AlignRight,
-  MoreVertical,
-  Copy,
-  ClipboardPaste,
-  MousePointer2,
-  ChevronsLeft,
-  ChevronLeft,
-  ChevronUp,
-  ChevronDown,
-  ChevronRight,
-  ChevronsRight,
-} from "lucide-react"
+import { FileText, Code, Upload, FileUp, MoreVertical } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useLocalStorage } from "usehooks-ts"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { EditingToolbar, FormattingToolbar, CursorNavigationButtons, MainEditingControls } from "./editor-toolbar"
 
 type EditorMode = "txt" | "html"
 
 export function TextEditor() {
-  const [content, setContent] = useState("")
-  const [mode, setMode] = useState<EditorMode>("txt")
-  const [fileName, setFileName] = useState("untitled")
-  const [fileExtension, setFileExtension] = useState(".txt")
+  const [content, setContent] = useLocalStorage("editor_content", "")
+  const [mode, setMode] = useLocalStorage<EditorMode>("editor_mode", "txt")
+  const [fileName, setFileName] = useLocalStorage("editor_fileName", "untitled")
+  const [fileExtension, setFileExtension] = useLocalStorage("editor_fileExtension", ".txt")
   const [showSaveDialog, setShowSaveDialog] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const fileHandleRef = useRef<FileSystemFileHandle | null>(null)
   const editorRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const execCommand = useCallback((command: string, value?: string) => {
     document.execCommand(command, false, value)
@@ -195,70 +173,220 @@ export function TextEditor() {
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }, [content])
 
+  // #region Action Handlers
   const handleSelectAll = useCallback(() => {
-    if (editorRef.current) {
-      const selection = window.getSelection()
-      const range = document.createRange()
-      range.selectNodeContents(editorRef.current)
-      selection?.removeAllRanges()
-      selection?.addRange(range)
-      editorRef.current.focus()
-    }
-  }, [])
-
-  const handleCopy = useCallback(() => {
-    document.execCommand("copy")
-  }, [])
-
-  const handlePaste = useCallback(async () => {
-    try {
-      const text = await navigator.clipboard.readText()
-      document.execCommand("insertText", false, text)
-    } catch (err) {
-      console.log("Paste failed:", err)
-    }
-  }, [])
-
-  const moveCursor = useCallback((direction: "start" | "left" | "up" | "down" | "right" | "end") => {
-    if (!editorRef.current) return
-
-    const selection = window.getSelection()
-    if (!selection || selection.rangeCount === 0) return
-
-    const range = selection.getRangeAt(0)
-
-    switch (direction) {
-      case "start":
-        range.setStart(editorRef.current, 0)
-        range.collapse(true)
-        break
-      case "end":
+    if (mode === "txt") {
+      textareaRef.current?.focus()
+      textareaRef.current?.select()
+    } else {
+      if (editorRef.current) {
+        const selection = window.getSelection()
+        const range = document.createRange()
         range.selectNodeContents(editorRef.current)
-        range.collapse(false)
-        break
-      case "left":
-        range.setStart(range.startContainer, Math.max(0, range.startOffset - 1))
-        range.collapse(true)
-        break
-      case "right":
-        range.setStart(range.startContainer, range.startOffset + 1)
-        range.collapse(true)
-        break
-      case "up":
-      case "down":
-        // Simulate arrow key press for up/down movement
-        const event = new KeyboardEvent("keydown", {
-          key: direction === "up" ? "ArrowUp" : "ArrowDown",
-          bubbles: true,
-        })
-        editorRef.current.dispatchEvent(event)
-        return
+        selection?.removeAllRanges()
+        selection?.addRange(range)
+        editorRef.current.focus()
+      }
     }
+  }, [mode])
 
-    selection.removeAllRanges()
-    selection.addRange(range)
-    editorRef.current.focus()
-  }, [])
+  const handleCopy = useCallback(async () => {
+    if (mode === "txt" && textareaRef.current) {
+      try {
+        const ta = textareaRef.current
+        const selected = ta.value.substring(ta.selectionStart, ta.selectionEnd)
+        await navigator.clipboard.writeText(selected || ta.value)
+      } catch (err) {
+        console.log("TXT copy failed:", err)
+      }
+    } else {
+      document.execCommand("copy")
+    }
+  }, [mode])
+
+  const handleRichPaste = useCallback(async () => {
+    editorRef.current?.focus(); 
+    try {
+        if (mode === 'html') {
+            const selection = window.getSelection();
+            if (!selection?.rangeCount) return;
+            const range = selection.getRangeAt(0);
+            range.deleteContents();
+
+            const clipboardItems = await navigator.clipboard.read();
+            let foundHtml = false;
+
+            for (const item of clipboardItems) {
+                if (item.types.includes('text/html')) {
+                    const blob = await item.getType('text/html');
+                    const html = await blob.text();
+                    
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    doc.body.querySelectorAll('*').forEach(el => el.removeAttribute('style'));
+                    
+                    const sanitizedHtml = doc.body.innerHTML;
+                    const fragment = range.createContextualFragment(sanitizedHtml);
+                    
+                    const leadingNewline = document.createTextNode('\n');
+                    const trailingNewline = document.createTextNode('\n');
+                    
+                    range.insertNode(trailingNewline);
+                    range.insertNode(fragment);
+                    range.insertNode(leadingNewline);
+                    
+                    range.setStartAfter(trailingNewline);
+                    range.collapse(true);
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                    
+                    foundHtml = true;
+                    break;
+                }
+            }
+
+            if (!foundHtml) {
+                const textToPaste = await navigator.clipboard.readText();
+                const textNode = document.createTextNode('\n' + textToPaste + '\n');
+                range.insertNode(textNode);
+                range.setStartAfter(textNode);
+                range.collapse(true);
+                selection.removeAllRanges();
+                selection.addRange(range);
+            }
+            handleEditorInput(); // Manually trigger state update
+        } else { // Text mode
+            const textToPaste = await navigator.clipboard.readText();
+            const ta = textareaRef.current;
+            if (ta) {
+                const start = ta.selectionStart;
+                const end = ta.selectionEnd;
+                setContent(prev => prev.slice(0, start) + textToPaste + prev.slice(end));
+                requestAnimationFrame(() => {
+                    ta.selectionStart = ta.selectionEnd = start + textToPaste.length;
+                });
+            }
+        }
+    } catch (err) {
+        console.error("Rich paste failed:", err);
+    }
+  }, [mode, handleEditorInput]);
+
+  const handlePlainTextPaste = useCallback(async () => {
+      editorRef.current?.focus();
+      try {
+          const textToPaste = await navigator.clipboard.readText();
+          if (mode === 'html') {
+              const selection = window.getSelection();
+              if (!selection?.rangeCount) return;
+
+              const range = selection.getRangeAt(0);
+              range.deleteContents();
+
+              const textNode = document.createTextNode('\n' + textToPaste + '\n');
+              range.insertNode(textNode);
+
+              // Move cursor to the end of the inserted text
+              range.setStartAfter(textNode);
+              range.collapse(true);
+              selection.removeAllRanges();
+              selection.addRange(range);
+              handleEditorInput(); // Manually trigger state update
+          } else { // Text mode
+              const ta = textareaRef.current;
+              if (ta) {
+                  const start = ta.selectionStart;
+                  const end = ta.selectionEnd;
+                  setContent(prev => prev.slice(0, start) + textToPaste + prev.slice(end));
+                  requestAnimationFrame(() => {
+                      ta.selectionStart = ta.selectionEnd = start + textToPaste.length;
+                  });
+              }
+          }
+      } catch (err) {
+          console.error("Plain text paste failed:", err);
+      }
+  }, [mode, handleEditorInput]);
+
+  const handleCut = useCallback(async () => {
+    if (mode === "txt" && textareaRef.current) {
+      try {
+        const ta = textareaRef.current
+        const start = ta.selectionStart
+        const end = ta.selectionEnd
+        if (start === end) return
+        await navigator.clipboard.writeText(ta.value.substring(start, end))
+        setContent(ta.value.slice(0, start) + ta.value.slice(end))
+        requestAnimationFrame(() => {
+          ta.focus()
+          ta.setSelectionRange(start, start)
+        })
+      } catch (err) {
+        console.log("TXT cut failed:", err)
+      }
+    } else {
+      execCommand("cut")
+    }
+  }, [mode, execCommand])
+
+  const handleUndo = useCallback(() => {
+    if (mode === "html") execCommand("undo")
+  }, [mode, execCommand])
+
+  const handleRedo = useCallback(() => {
+    if (mode === "html") execCommand("redo")
+  }, [mode, execCommand])
+
+  const moveCursor = useCallback(
+    (direction: "start" | "left" | "up" | "down" | "right" | "end") => {
+      const target = mode === "txt" ? textareaRef.current : editorRef.current
+      if (!target) return
+
+      target.focus()
+      const selection = window.getSelection()
+      if (!selection) return
+
+      switch (direction) {
+        case "start":
+          if (target instanceof HTMLTextAreaElement) {
+            target.setSelectionRange(0, 0)
+          } else {
+            const range = document.createRange()
+            range.selectNodeContents(target)
+            range.collapse(true)
+            selection.removeAllRanges()
+            selection.addRange(range)
+          }
+          break
+        case "end":
+          if (target instanceof HTMLTextAreaElement) {
+            const len = target.value.length
+            target.setSelectionRange(len, len)
+          } else {
+            const range = document.createRange()
+            range.selectNodeContents(target)
+            range.collapse(false)
+            selection.removeAllRanges()
+            selection.addRange(range)
+          }
+          break
+        case "left":
+          selection.modify("move", "backward", "character")
+          break
+        case "right":
+          selection.modify("move", "forward", "character")
+          break
+        case "up":
+          selection.modify("move", "backward", "line")
+          break
+        case "down":
+          selection.modify("move", "forward", "line")
+          break
+      }
+    },
+    [mode],
+  )
+  // #endregion
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -275,6 +403,12 @@ export function TextEditor() {
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [handleQuickSave, handleOpenFile])
 
+  const fileActions = [
+    { label: "新增", icon: FileUp, handler: handleNewFile },
+    { label: "開啟", icon: Upload, handler: handleOpenFile },
+    { label: "另存新檔", icon: FileText, handler: () => setShowSaveDialog(true) },
+  ]
+
   return (
     <div className="flex flex-col h-full bg-background">
       <header className="sticky top-0 z-50 flex items-center justify-between px-4 py-3 border-b border-border bg-card">
@@ -288,24 +422,12 @@ export function TextEditor() {
 
         <div className="flex items-center gap-2">
           <div className="hidden md:flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleNewFile}>
-              <FileUp className="h-4 w-4 mr-2" />
-              新增
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleOpenFile}>
-              <Upload className="h-4 w-4 mr-2" />
-              開啟
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setShowSaveDialog(true)}>
-              <FileText className="h-4 w-4 mr-2" />
-              另存新檔
-            </Button>
-            {mode === "html" && (
-              <Button variant="outline" size="sm" onClick={handlePreview}>
-                <Eye className="h-4 w-4 mr-2" />
-                預覽
+            {fileActions.map((action, index) => (
+              <Button key={index} variant="outline" size="sm" onClick={action.handler}>
+                <action.icon className="h-4 w-4 mr-2" />
+                {action.label}
               </Button>
-            )}
+            ))}
           </div>
 
           <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
@@ -334,198 +456,38 @@ export function TextEditor() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={handleNewFile}>
-                <FileUp className="h-4 w-4 mr-2" />
-                新增
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleOpenFile}>
-                <Upload className="h-4 w-4 mr-2" />
-                開啟
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setShowSaveDialog(true)}>
-                <FileText className="h-4 w-4 mr-2" />
-                另存新檔
-              </DropdownMenuItem>
-              {mode === "html" && (
-                <DropdownMenuItem onClick={handlePreview}>
-                  <Eye className="h-4 w-4 mr-2" />
-                  預覽
+              {fileActions.map((action, index) => (
+                <DropdownMenuItem key={index} onClick={action.handler}>
+                  <action.icon className="h-4 w-4 mr-2" />
+                  {action.label}
                 </DropdownMenuItem>
-              )}
+              ))}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </header>
 
+      <MainEditingControls
+        onSelectAll={handleSelectAll}
+        onCopy={handleCopy}
+        onRichPaste={handleRichPaste}
+        onPlainTextPaste={handlePlainTextPaste}
+        onCut={handleCut}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        onMove={moveCursor}
+      />
+
       {mode === "html" && (
-        <>
-          <div className="sticky top-[57px] z-40 flex items-center border-b border-border bg-card/95 backdrop-blur-sm">
-            <div className="shrink-0 px-4 py-2 bg-card/95">
-              <Button variant="ghost" size="sm" className="h-8" onClick={handlePreview} title="預覽">
-                <Eye className="h-4 w-4 md:mr-1" />
-                <span className="hidden md:inline">預覽</span>
-              </Button>
-            </div>
-            <div className="w-px h-6 bg-border shrink-0" />
-            <div className="flex items-center gap-1 px-4 py-2 overflow-x-auto">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 shrink-0"
-                onClick={() => execCommand("bold")}
-                title="粗體"
-              >
-                <Bold className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 shrink-0"
-                onClick={() => execCommand("italic")}
-                title="斜體"
-              >
-                <Italic className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 shrink-0"
-                onClick={() => execCommand("underline")}
-                title="底線"
-              >
-                <Underline className="h-4 w-4" />
-              </Button>
-              <div className="w-px h-6 bg-border mx-1 shrink-0" />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 shrink-0"
-                onClick={() => execCommand("justifyLeft")}
-                title="靠左對齊"
-              >
-                <AlignLeft className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 shrink-0"
-                onClick={() => execCommand("justifyCenter")}
-                title="置中對齊"
-              >
-                <AlignCenter className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 shrink-0"
-                onClick={() => execCommand("justifyRight")}
-                title="靠右對齊"
-              >
-                <AlignRight className="h-4 w-4" />
-              </Button>
-              <div className="w-px h-6 bg-border mx-1 shrink-0" />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 shrink-0"
-                onClick={() => execCommand("insertUnorderedList")}
-                title="無序列表"
-              >
-                <List className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 shrink-0"
-                onClick={() => execCommand("insertOrderedList")}
-                title="有序列表"
-              >
-                <ListOrdered className="h-4 w-4" />
-              </Button>
-              <div className="w-px h-6 bg-border mx-1 shrink-0" />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 shrink-0"
-                onClick={() => {
-                  const url = prompt("輸入連結網址:")
-                  if (url) execCommand("createLink", url)
-                }}
-                title="插入連結"
-              >
-                <LinkIcon className="h-4 w-4" />
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-8 shrink-0">
-                    標題
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuItem onClick={() => execCommand("formatBlock", "<h1>")}>標題 1</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => execCommand("formatBlock", "<h2>")}>標題 2</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => execCommand("formatBlock", "<h3>")}>標題 3</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => execCommand("formatBlock", "<p>")}>段落</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </div>
-
-          <div className="sticky top-[105px] z-40 flex items-center gap-1 px-4 py-2 border-b border-border bg-card/95 backdrop-blur-sm overflow-x-auto">
-            <Button variant="ghost" size="sm" className="h-8 shrink-0" onClick={handleSelectAll} title="全選">
-              <MousePointer2 className="h-4 w-4 md:mr-1" />
-              <span className="hidden md:inline">全選</span>
-            </Button>
-            <Button variant="ghost" size="sm" className="h-8 shrink-0" onClick={handleCopy} title="複製">
-              <Copy className="h-4 w-4 md:mr-1" />
-              <span className="hidden md:inline">複製</span>
-            </Button>
-            <Button variant="ghost" size="sm" className="h-8 shrink-0" onClick={handlePaste} title="貼上">
-              <ClipboardPaste className="h-4 w-4 md:mr-1" />
-              <span className="hidden md:inline">貼上</span>
-            </Button>
-
-            <div className="w-px h-6 bg-border mx-2 shrink-0" />
-
-            <div className="flex items-center gap-0.5 shrink-0">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => moveCursor("start")}
-                title="移到開頭"
-              >
-                <ChevronsLeft className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => moveCursor("left")} title="向左">
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => moveCursor("up")} title="向上">
-                <ChevronUp className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => moveCursor("down")} title="向下">
-                <ChevronDown className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => moveCursor("right")} title="向右">
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => moveCursor("end")}
-                title="移到結尾"
-              >
-                <ChevronsRight className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </>
+        <div className="sticky top-[105px] z-40 flex items-center border-b border-border bg-card/95 backdrop-blur-sm">
+          <FormattingToolbar onPreview={handlePreview} onExecCommand={execCommand} />
+        </div>
       )}
 
       <div className="flex-1 overflow-auto">
         {mode === "txt" ? (
           <Textarea
+            ref={textareaRef}
             value={content}
             onChange={(e) => setContent(e.target.value)}
             placeholder="輸入文字..."
