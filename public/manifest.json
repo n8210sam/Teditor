@@ -3,7 +3,7 @@
   "description": "支援 TXT 和 HTML 編輯與預覽的 PWA 文字編輯器",
   "dir": "ltr",
   "display": "standalone",
-  "name": "TextEditor",
+  "name": "Teditor",
   "orientation": "any",
   "scope": "/",
   "short_name": "Teditor",
