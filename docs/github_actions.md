@@ -6,6 +6,132 @@
 
 ---
 
+### **版本 8：直接使用 GitHub Pages（當前版本）**
+
+**日期：** 2025-01-12
+
+**問題（版本 7）：**
+```
+HTTP/1.1 200 OK      ← http://localhost:3000/ 成功
+HTTP/1.1 404 Not Found  ← http://localhost:3000/Teditor/ 失敗
+```
+
+**根本原因：**
+`serve` 是簡單的靜態檔案伺服器，**不理解 Next.js 的 basePath 路由**。
+
+- `serve out` 會直接服務檔案
+- `/` → `out/index.html` ✅
+- `/Teditor/` → 尋找 `out/Teditor/index.html` ❌（不存在）
+- 雖然 HTML 內部連結都有 `/Teditor/` 前綴，但 serve 不會處理路由重寫
+
+**本地測試成功的原因：**
+本地瀏覽器打開 `http://localhost:3000/`，Next.js 的客戶端路由接管，所以看起來正常。
+但直接訪問 `http://localhost:3000/Teditor/` 時，serve 找不到對應檔案。
+
+**解決方案：直接使用 GitHub Pages**
+
+既然 GitHub Pages 已經成功部署並支援 basePath，不如直接使用它：
+
+```yaml
+- name: Build Next.js app
+  run: pnpm build
+
+- name: Wait for GitHub Pages deployment
+  run: |
+    echo "Waiting for GitHub Pages to be accessible..."
+    for i in {1..30}; do
+      if curl -f https://n8210sam.github.io/Teditor/manifest.json > /dev/null 2>&1; then
+        echo "✓ GitHub Pages is ready"
+        break
+      fi
+      echo "Attempt $i/30: GitHub Pages not ready yet, waiting 10s..."
+      sleep 10
+    done
+    curl -f https://n8210sam.github.io/Teditor/manifest.json || (echo "GitHub Pages not accessible" && exit 1)
+
+- name: Initialize Bubblewrap project (non-interactive mode)
+  timeout-minutes: 20
+  run: |
+    cat > answers.txt << 'ANSWERS'
+    Y
+    Y
+    TextEdit
+    TextEdit
+    com.textedit.app
+    n8210sam.github.io
+    /Teditor/
+    standalone
+    #1a1a1a
+    https://n8210sam.github.io/Teditor/apple-icon.png
+    ANSWERS
+    
+    cat answers.txt | bubblewrap init --manifest=https://n8210sam.github.io/Teditor/manifest.json --directory=./twa-project || {
+      echo "Bubblewrap init failed with exit code $?"
+      timeout 300 sh -c 'yes Y | bubblewrap init --manifest=https://n8210sam.github.io/Teditor/manifest.json --directory=./twa-project' || true
+    }
+    
+    if [ ! -d "twa-project" ]; then
+      echo "ERROR: Bubblewrap init failed"
+      exit 1
+    fi
+```
+
+**新問題：Android SDK 授權**
+
+初次執行時遇到：
+```
+Accept? (y/N): Skipping following packages as the license is not accepted:
+Android SDK Build-Tools 34
+ENOENT: no such file or directory, open 'twa-project/twa-manifest.json'
+```
+
+**原因：**
+- Bubblewrap 需要 Android Build Tools 34
+- GitHub Actions 的 Android SDK 預設沒有接受授權
+- 導致安裝失敗，Bubblewrap 無法完成初始化
+
+**解決方案：**
+```yaml
+- name: Accept Android SDK licenses
+  run: |
+    yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+    yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0" || true
+```
+
+**遇到問題：twa-manifest.json 缺失**
+```
+cli ERROR ENOENT: no such file or directory, open 'twa-project/twa-manifest.json'
+```
+
+說明 Bubblewrap init 沒有成功完成，可能原因：
+1. Android SDK 授權仍未通過
+2. Bubblewrap init 過程中某個步驟失敗
+3. 互動問題沒有正確回答
+
+**調試步驟：**
+加入詳細的診斷輸出：
+- Android SDK 授權和安裝狀態
+- 答案檔內容驗證
+- Bubblewrap init 完整輸出（包含 stderr）
+- 目錄和檔案存在性檢查
+- 失敗時顯示目錄內容
+
+**狀態：** 🔄 診斷中
+
+**優點：**
+- ✅ 不依賴本地 serve
+- ✅ 使用真實的 HTTPS 部署網址
+- ✅ 自動等待 GitHub Pages 就緒（最多 5 分鐘）
+- ✅ 更接近實際使用情境
+- ✅ 自動接受 Android SDK 授權
+
+**可能的問題：**
+- ⚠️ 依賴 `deploy-pages.yml` 先執行完成
+- ⚠️ 如果 Pages 部署失敗，APK 建置也會失敗
+- ⚠️ 需要等待 Pages 部署時間（增加總建置時間）
+
+---
+
 ### **版本 7：靜態導出 + Serve（當前版本）**
 
 **日期：** 2025-01-12
@@ -434,7 +560,34 @@ EOF
 - ✅ `serve out/Teditor` - 當有 basePath 時，直接服務子目錄
 - ⚠️ basePath 會讓 Next.js 建置到子目錄（`out/<basePath>/`）
 
-### **3. basePath 路徑邏輯（關鍵理解）** ⚠️
+### **3. serve 與 basePath 的不相容性** ⚠️
+
+**問題：**
+`serve` 是純靜態檔案伺服器，不支援路由重寫或 SPA 模式。
+
+**實際行為：**
+```bash
+serve out/
+├── GET / → 返回 out/index.html ✅
+├── GET /about → 尋找 out/about（檔案） ❌ 404
+└── GET /Teditor/ → 尋找 out/Teditor/index.html ❌ 404
+```
+
+**Next.js basePath 的期望：**
+```
+GET /Teditor/ → 應該返回 out/index.html（然後客戶端路由接管）
+```
+
+**為什麼本地測試看起來成功？**
+- 打開 `http://localhost:3000/` → serve 返回 index.html ✅
+- Next.js 客戶端路由接管，處理所有內部導航 ✅
+- 但直接訪問 `http://localhost:3000/Teditor/` → serve 找不到檔案 ❌
+
+**解決方案：**
+1. 使用支援 SPA 模式的伺服器（如 `http-server -S` 或 nginx）
+2. 或直接使用已部署的 GitHub Pages（本專案採用）
+
+### **4. basePath 路徑邏輯（關鍵理解）** ⚠️
 
 **Next.js basePath 的真實行為：**
 ```javascript
@@ -472,7 +625,31 @@ serve out                          # 服務 out/ 根目錄
 訪問：http://localhost:3000/Teditor/  # 需要加 basePath
 ```
 
-### **4. Bubblewrap 的互動問題清單**
+### **5. Android SDK 授權問題**
+
+**問題：**
+Bubblewrap 需要 Android Build Tools，但 CI 環境預設未接受授權。
+
+**錯誤訊息：**
+```
+Accept? (y/N): Skipping following packages as the license is not accepted:
+Android SDK Build-Tools 34
+```
+
+**解決方案：**
+```yaml
+- name: Accept Android SDK licenses
+  run: |
+    yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+    yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0" || true
+```
+
+**注意：**
+- 使用 `$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager` 完整路徑
+- 不要只用 `sdkmanager`（可能找不到指令）
+- 明確指定需要的 build-tools 版本
+
+### **6. Bubblewrap 的互動問題清單**
 1. JDK 安裝確認（Y/N）
 2. Android SDK 安裝確認（Y/N）
 3. Application name（文字）
@@ -484,12 +661,26 @@ serve out                          # 服務 out/ 根目錄
 9. Status bar color（文字）
 10. Icon URL（文字）
 
-### **5. 靜態伺服器管理**
+### **7. 使用已部署的網站而非本地伺服器**
+
+當專案有 basePath 或複雜路由時，不如直接使用已部署的網站：
+
+**優點：**
+- ✅ 避免本地伺服器路由問題
+- ✅ 使用真實的 HTTPS 網址
+- ✅ 測試實際部署的版本
+
+**缺點：**
+- ⚠️ 依賴外部服務（GitHub Pages）
+- ⚠️ 增加建置時間（需等待部署）
+- ⚠️ 需要網路連線
+
+### **8. 靜態伺服器管理**
 - 使用 `&` 在背景執行
 - 記錄 PID 以便後續清理
 - 使用 `if: always()` 確保清理步驟總是執行
 
-### **6. APK 檔案查找**
+### **9. APK 檔案查找**
 - Bubblewrap 產生的 APK 位置可能不固定
 - 使用 `find` 指令遞迴搜尋所有 `.apk` 檔案
 - 統一複製到 `apk-output/` 目錄便於管理
@@ -564,7 +755,8 @@ git push --tags
 | v5 (yes Command) | ❌ 失敗 | 無限循環超過 40 分鐘 |
 | v6 (Pre-configured Answers) | ❌ 失敗 | YAML 語法錯誤 |
 | v6.1 (Fixed YAML Syntax) | ❌ 失敗 | next start 不支援靜態導出 |
-| v7 (Static Export + Serve) | 🔄 待測試 | 目前版本 |
+| v7 (Static Export + Serve) | ❌ 失敗 | serve 無法處理 basePath 路由 |
+| v8 (Use GitHub Pages) | 🔄 測試中 | 目前版本 |
 
 ---
 

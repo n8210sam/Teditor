@@ -44,8 +44,14 @@ jobs:
       
       - name: Accept Android SDK licenses
         run: |
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0" || true
+          echo "=== Accepting licenses ==="
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses 2>&1 | tail -20
+          echo ""
+          echo "=== Installing build-tools ==="
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0" 2>&1 | tail -20
+          echo ""
+          echo "=== Verifying installation ==="
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --list | grep "build-tools;34"
 
       - name: Install Bubblewrap CLI
         run: npm install -g @bubblewrap/cli
@@ -80,19 +86,37 @@ jobs:
           https://n8210sam.github.io/Teditor/apple-icon.png
           ANSWERS
           
+          echo "=== Answers file created ==="
+          cat answers.txt
+          echo ""
+          echo "=== Running bubblewrap init ==="
+          
           # Feed answers to bubblewrap init
-          cat answers.txt | bubblewrap init --manifest=https://n8210sam.github.io/Teditor/manifest.json --directory=./twa-project || {
+          cat answers.txt | bubblewrap init --manifest=https://n8210sam.github.io/Teditor/manifest.json --directory=./twa-project 2>&1 || {
             echo "Bubblewrap init failed with exit code $?"
             echo "Trying alternative method..."
             timeout 300 sh -c 'yes Y | bubblewrap init --manifest=http://localhost:3000/manifest.json --directory=./twa-project' || true
           }
           
           # Verify project was created
+          echo ""
+          echo "=== Checking twa-project directory ==="
           if [ ! -d "twa-project" ]; then
-            echo "ERROR: Bubblewrap init failed - twa-project directory not created"
+            echo "ERROR: twa-project directory not created"
             exit 1
           fi
           
+          echo "✓ twa-project directory exists"
+          echo ""
+          echo "=== Checking twa-manifest.json ==="
+          if [ ! -f "twa-project/twa-manifest.json" ]; then
+            echo "ERROR: twa-manifest.json not found"
+            echo "Directory contents:"
+            ls -la twa-project/
+            exit 1
+          fi
+          
+          echo "✓ twa-manifest.json exists"
           echo "SUCCESS: Bubblewrap project initialized"
         env:
           CI: true
