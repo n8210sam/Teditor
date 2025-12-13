@@ -45,13 +45,15 @@ jobs:
       - name: Accept Android SDK licenses
         run: |
           echo "=== Accepting licenses ==="
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses 2>&1 | tail -20
+          mkdir -p $ANDROID_HOME/licenses
+          echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > $ANDROID_HOME/licenses/android-sdk-license
+          echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> $ANDROID_HOME/licenses/android-sdk-license
           echo ""
           echo "=== Installing build-tools ==="
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0" 2>&1 | tail -20
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0" --sdk_root=$ANDROID_HOME
           echo ""
           echo "=== Verifying installation ==="
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --list | grep "build-tools;34"
+          ls -la $ANDROID_HOME/build-tools/
 
       - name: Install Bubblewrap CLI
         run: npm install -g @bubblewrap/cli
@@ -91,11 +93,10 @@ jobs:
           echo ""
           echo "=== Running bubblewrap init ==="
           
-          # Feed answers to bubblewrap init
-          cat answers.txt | bubblewrap init --manifest=https://n8210sam.github.io/Teditor/manifest.json --directory=./twa-project 2>&1 || {
-            echo "Bubblewrap init failed with exit code $?"
-            echo "Trying alternative method..."
-            timeout 300 sh -c 'yes Y | bubblewrap init --manifest=http://localhost:3000/manifest.json --directory=./twa-project' || true
+          # Feed answers to bubblewrap init with timeout
+          timeout 600 sh -c 'cat answers.txt | bubblewrap init --manifest=https://n8210sam.github.io/Teditor/manifest.json --directory=./twa-project' 2>&1 || {
+            echo "Bubblewrap init failed or timed out with exit code $?"
+            exit 1
           }
           
           # Verify project was created

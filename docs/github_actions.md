@@ -116,7 +116,27 @@ cli ERROR ENOENT: no such file or directory, open 'twa-project/twa-manifest.json
 - 目錄和檔案存在性檢查
 - 失敗時顯示目錄內容
 
-**狀態：** 🔄 診斷中
+**新問題：又是無限循環**
+
+可能原因：
+1. `yes | sdkmanager` 進入無限循環
+2. Bubblewrap 的某個問題沒有正確回答
+
+**解決方案（版本 8.1）：**
+1. **直接寫入授權檔** - 不用 `yes | sdkmanager --licenses`
+2. **加上明確的 timeout** - Bubblewrap init 設定 10 分鐘超時
+3. **移除備用方案** - 避免多重嘗試導致更多問題
+
+```yaml
+# 直接建立授權檔案
+mkdir -p $ANDROID_HOME/licenses
+echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > $ANDROID_HOME/licenses/android-sdk-license
+
+# 使用 timeout 避免無限等待
+timeout 600 sh -c 'cat answers.txt | bubblewrap init ...'
+```
+
+**狀態：** 🔄 測試中
 
 **優點：**
 - ✅ 不依賴本地 serve
