@@ -1,10 +1,10 @@
-name: Build Android APK
+name: 建置 Android APK
 
 on:
   push:
     branches: [ main, master ]
-    tags:
-      - 'v*'
+  tags:
+    - 'v*'
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
@@ -12,150 +12,200 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+
     steps:
-      - name: Checkout repository
+      - name: 簽出程式碼
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: 設定 Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: 'npm'
 
-      - name: Setup pnpm
+      - name: 設定 pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 10
 
-      - name: Install dependencies
+      - name: 安裝依賴
         run: pnpm install --frozen-lockfile
 
-      - name: Build Next.js app
+      - name: 建置 Next.js 應用
         run: pnpm build
 
-      - name: Setup JDK 17
+      - name: 設定 JDK 17
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '17'
 
-      - name: Setup Android SDK
+      - name: 設定 Android SDK
         uses: android-actions/setup-android@v3
-      
-      - name: Accept Android SDK licenses
+
+      - name: 接受 Android SDK 授權
         run: |
-          echo "=== Accepting licenses ==="
+          echo "=== 接受 Android SDK 授權 ==="
           mkdir -p $ANDROID_HOME/licenses
           echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > $ANDROID_HOME/licenses/android-sdk-license
-          echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> $ANDROID_HOME/licenses/android-sdk-license
-          echo ""
-          echo "=== Installing build-tools ==="
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0" --sdk_root=$ANDROID_HOME
-          echo ""
-          echo "=== Verifying installation ==="
-          ls -la $ANDROID_HOME/build-tools/
+          echo "84831b9409646a918e30573bab4c9c91346d8abd" > $ANDROID_HOME/licenses/android-sdk-preview-license
+          echo "d56f5187479bea82b38e8a18a2dd3ac60e6b99a6" > $ANDROID_HOME/licenses/android-adt-license
+          
+          echo "=== 安裝建置工具 ==="
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0" 2>&1 | head -20 || true
+          
+          echo "=== 驗證安裝 ==="
+          if [ -d "$ANDROID_HOME/build-tools/34.0.0" ]; then
+            echo "✓ 建置工具已安裝"
+          else
+            echo "⚠ 警告：建置工具安裝可能失敗，但繼續進行"
+          fi
 
-      - name: Install Bubblewrap CLI
+      - name: 安裝 Bubblewrap CLI
         run: npm install -g @bubblewrap/cli
 
-      - name: Wait for GitHub Pages deployment
+      - name: 啟動靜態伺服器
         run: |
-          echo "Waiting for GitHub Pages to be accessible..."
-          for i in {1..30}; do
-            if curl -f https://n8210sam.github.io/Teditor/manifest.json > /dev/null 2>&1; then
-              echo "✓ GitHub Pages is ready"
-              break
-            fi
-            echo "Attempt $i/30: GitHub Pages not ready yet, waiting 10s..."
-            sleep 10
-          done
-          curl -f https://n8210sam.github.io/Teditor/manifest.json || (echo "GitHub Pages not accessible" && exit 1)
-
-      - name: Initialize Bubblewrap project (with expect)
-        timeout-minutes: 20
-        run: |
-          echo "=== Installing expect ==="
-          sudo apt-get update -qq && sudo apt-get install -y expect
+          cd out
+          npx serve -l 3000 &
+          echo $! > ../server.pid
+          sleep 5
           
-          echo "=== Creating expect script ==="
-          cat > bubblewrap_init.exp << 'EXPECT_SCRIPT'
-          #!/usr/bin/expect -f
-          set timeout 600
-          
-          spawn bubblewrap init --manifest=https://n8210sam.github.io/Teditor/manifest.json --directory=./twa-project
-          
-          expect "Do you want Bubblewrap to install the JDK*" { send "Y\r" }
-          expect "Do you want Bubblewrap to install the Android SDK*" { send "Y\r" }
-          expect "Application name*" { send "\r" }
-          expect "Short name*" { send "\r" }
-          expect "Application ID*" { send "com.textedit.app\r" }
-          expect "Host*" { send "n8210sam.github.io\r" }
-          expect "Start URL*" { send "/Teditor/\r" }
-          expect "Display mode*" { send "\r" }
-          expect "Status bar color*" { send "\r" }
-          expect "Icon URL*" { send "\r" }
-          
-          expect eof
-          EXPECT_SCRIPT
-          
-          chmod +x bubblewrap_init.exp
-          
-          echo "=== Running bubblewrap init with expect ==="
-          ./bubblewrap_init.exp || {
-            echo "Bubblewrap init failed with exit code $?"
+          echo "=== 驗證伺服器 ==="
+          if curl -f http://localhost:3000/Teditor/ > /dev/null 2>&1; then
+            echo "✓ 伺服器已啟動並可訪問"
+          else
+            echo "✗ 伺服器啟動失敗"
             exit 1
+          fi
+
+      - name: 初始化 Bubblewrap 專案（非交互模式）
+        timeout-minutes: 40
+        run: |
+          echo "=== 初始化 Bubblewrap ==="
+          
+          # 創建答案文件
+          cat > answers.txt << 'ANSWERS'
+          Y
+          Y
+          TextEdit
+          TextEdit
+          com.textedit.app
+          localhost:3000
+          /Teditor/
+          standalone
+          1a1a1a
+          http://localhost:3000/Teditor/apple-icon.png
+          ANSWERS
+          
+          cat answers.txt
+          
+          echo "=== 運行 Bubblewrap 初始化 ==="
+          timeout 30m sh -c 'yes Y | bubblewrap init --manifest http://localhost:3000/Teditor/manifest.json --directory .twa-project' || {
+            EXIT_CODE=$?
+            if [ $EXIT_CODE -eq 124 ]; then
+              echo "⚠ Bubblewrap 初始化超時，但嘗試繼續進行"
+            else
+              echo "✗ Bubblewrap 初始化失敗，退出代碼：$EXIT_CODE"
+              exit 1
+            fi
           }
           
-          # Verify project was created
-          echo ""
-          echo "=== Checking twa-project directory ==="
-          if [ ! -d "twa-project" ]; then
-            echo "ERROR: twa-project directory not created"
+          # 驗證專案是否已建立
+          if [ ! -d ".twa-project" ]; then
+            echo "✗ 錯誤：.twa-project 目錄未建立"
             exit 1
           fi
           
-          echo "✓ twa-project directory exists"
-          echo ""
-          echo "=== Checking twa-manifest.json ==="
-          if [ ! -f "twa-project/twa-manifest.json" ]; then
-            echo "ERROR: twa-manifest.json not found"
-            echo "Directory contents:"
-            ls -la twa-project/
-            exit 1
+          echo "✓ Bubblewrap 專案已初始化"
+
+      - name: 優化 Gradle 配置
+        run: |
+          echo "=== 優化 Gradle 記憶體配置 ==="
+          
+          if [ ! -f ".twa-project/gradle.properties" ]; then
+            touch .twa-project/gradle.properties
           fi
           
-          echo "✓ twa-manifest.json exists"
-          echo "SUCCESS: Bubblewrap project initialized"
-        env:
-          CI: true
+          # 設定 Gradle 堆記憶體
+          cat >> .twa-project/gradle.properties << 'EOF'
+          org.gradle.jvmargs=-Xmx1024m -XX:MaxMetaspaceSize=256m
+          org.gradle.daemon=false
+          org.gradle.parallel=true
+          org.gradle.workers.max=2
+          EOF
+          
+          cat .twa-project/gradle.properties
 
-      - name: Build Android APK
+      - name: 建置 Android APK
         run: |
-          cd twa-project
-          bubblewrap build --skipPwaValidation
-        env:
-          CI: true
+          echo "=== 開始建置 Android APK ==="
+          cd .twa-project
+          
+          # 顯示 Gradle 版本
+          ./gradlew --version || echo "⚠ 無法顯示 Gradle 版本"
+          
+          # 建置 APK
+          ./gradlew build --info --stacktrace || {
+            EXIT_CODE=$?
+            echo "✗ 建置失敗，退出代碼：$EXIT_CODE"
+            exit $EXIT_CODE
+          }
+          
+          echo "✓ APK 建置完成"
 
-
-      - name: Find and prepare APK
+      - name: 停止伺服器
+        if: always()
         run: |
+          if [ -f "server.pid" ]; then
+            kill $(cat server.pid) 2>/dev/null || true
+            rm server.pid
+            echo "✓ 伺服器已停止"
+          fi
+
+      - name: 查找並準備 APK
+        if: success()
+        run: |
+          echo "=== 搜尋 APK 檔案 ==="
           mkdir -p apk-output
-          find twa-project -name "*.apk" -exec cp {} apk-output/ \;
-          ls -lh apk-output/
+          
+          # 查找所有 APK
+          find .twa-project -name "*.apk" -type f | while read apk; do
+            echo "找到 APK：$apk"
+            cp "$apk" apk-output/
+          done
+          
+          # 列出輸出檔案
+          echo "=== APK 輸出目錄 ==="
+          ls -lh apk-output/ || echo "未找到 APK 檔案"
+          
+          if [ -z "$(ls -A apk-output/)" ]; then
+            echo "✗ 警告：未找到任何 APK 檔案"
+            exit 1
+          fi
 
-      - name: Upload APK artifact
+      - name: 上傳 APK 工件
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: TextEdit-APK
-          path: apk-output/*.apk
+          path: apk-output/
           if-no-files-found: error
 
-      - name: Create Release (on tag push)
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: 建立發布版本
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v1
         with:
-          files: apk-output/*.apk
+          files: apk-output/*
           draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 上傳構建日誌
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 建置日誌
+          path: .twa-project/build/reports/
+          if-no-files-found: warn
