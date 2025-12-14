@@ -2,9 +2,10 @@
 const nextConfig = {
   // Enable static export for GitHub Pages
   output: 'export',
-  
-  // Base path for GitHub Pages
+
+  // Always use basePath to match production (GitHub Pages subpath)
   basePath: '/Teditor',
+
   
   typescript: {
     ignoreBuildErrors: true,

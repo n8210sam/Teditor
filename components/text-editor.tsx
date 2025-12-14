@@ -410,7 +410,7 @@ export function TextEditor() {
   ]
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="flex flex-col h-full bg-background" suppressHydrationWarning>
       <header className="sticky top-0 z-50 flex items-center justify-between px-4 py-3 border-b border-border bg-card">
         <div className="flex items-center gap-2">
           <FileText className="h-5 w-5 text-primary" />

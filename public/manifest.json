@@ -1,70 +1,18 @@
 {
-  "background_color": "#ffffff",
+  "name": "Teditor",
+  "short_name": "Teditor",
   "description": "支援 TXT 和 HTML 編輯與預覽的 PWA 文字編輯器",
   "dir": "ltr",
   "display": "standalone",
-  "name": "Teditor",
   "orientation": "any",
-  "scope": "/",
-  "short_name": "Teditor",
-  "start_url": "/Teditor/"
+  "start_url": ".",
+  "scope": ".",
+  "background_color": "#ffffff",
   "theme_color": "#ffffff",
   "icons": [
-    {
-      "src": "https://n8210sam.github.io/text-editor.png",
-      "isSquare": false,
-      "isPng": true,
-      "isWebp": false,
-      "isJpg": false,
-      "width": 0,
-      "is512x512": true,
-      "is256x256": false,
-      "is192x192": false
-    },
-    {
-      "src": "https://n8210sam.github.io/icon-light-32x32.png",
-      "isSquare": false,
-      "isPng": true,
-      "isWebp": false,
-      "isJpg": false,
-      "width": 0,
-      "is512x512": false,
-      "is256x256": false,
-      "is192x192": false
-    },
-    {
-      "src": "https://n8210sam.github.io/icon-dark-32x32.png",
-      "isSquare": false,
-      "isPng": true,
-      "isWebp": false,
-      "isJpg": false,
-      "width": 0,
-      "is512x512": false,
-      "is256x256": false,
-      "is192x192": false
-    },
-    {
-      "src": "https://n8210sam.github.io/icon.svg",
-      "type": "image/svg+xml",
-      "isSquare": false,
-      "isPng": false,
-      "isWebp": false,
-      "isJpg": false,
-      "width": 0,
-      "is512x512": false,
-      "is256x256": false,
-      "is192x192": false
-    },
-    {
-      "src": "https://n8210sam.github.io/apple-icon.png",
-      "isSquare": false,
-      "isPng": true,
-      "isWebp": false,
-      "isJpg": false,
-      "width": 0,
-      "is512x512": false,
-      "is256x256": false,
-      "is192x192": false
-    }
+    { "src": "icon-light-32x32.png", "sizes": "32x32", "type": "image/png", "purpose": "any" },
+    { "src": "icon-dark-32x32.png", "sizes": "32x32", "type": "image/png", "purpose": "any" },
+    { "src": "apple-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any" },
+    { "src": "icon.svg", "type": "image/svg+xml", "purpose": "any" }
   ]
 }
