@@ -475,25 +475,6 @@ export function TextEditor() {
             ))}
           </div>
 
-          <div className="zh-模式切換 en-mode-toggle flex items-center gap-1 bg-muted rounded-lg p-1">
-            <Button
-              variant={mode === "txt" ? "secondary" : "ghost"}
-              size="sm"
-              className="h-8 px-3"
-              onClick={() => setMode("txt")}
-            >
-              <FileText className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={mode === "html" ? "secondary" : "ghost"}
-              size="sm"
-              className="h-8 px-3"
-              onClick={() => setMode("html")}
-            >
-              <Code className="h-4 w-4" />
-            </Button>
-          </div>
-
           <DropdownMenu>
             <DropdownMenuTrigger asChild className="md:hidden">
               <Button variant="outline" size="sm" className="h-8 px-3 bg-transparent">
@@ -513,17 +494,19 @@ export function TextEditor() {
       </header>
 
       <MainEditingControls
-        onSelectAll={handleSelectAll}
-        onCopy={handleCopy}
-        onRichPaste={handleRichPaste}
-        onPlainTextPaste={handlePlainTextPaste}
-        onCut={handleCut}
-        onUndo={handleUndo}
-        onRedo={handleRedo}
-        undoDisabled={mode === 'txt' ? txtHistoryRef.current.length === 0 : false}
-        redoDisabled={mode === 'txt' ? txtFutureRef.current.length === 0 : false}
-        onMove={moveCursor}
-      />
+       onSelectAll={handleSelectAll}
+       onCopy={handleCopy}
+       onRichPaste={handleRichPaste}
+       onPlainTextPaste={handlePlainTextPaste}
+       onCut={handleCut}
+       onUndo={handleUndo}
+       onRedo={handleRedo}
+       undoDisabled={mode === 'txt' ? txtHistoryRef.current.length === 0 : false}
+       redoDisabled={mode === 'txt' ? txtFutureRef.current.length === 0 : false}
+       onMove={moveCursor}
+       mode={mode}
+       onChangeMode={setMode}
+     />
 
       {mode === "html" && (
         <div className="zh-格式化工具列 en-formatting-toolbar-wrapper sticky top-[105px] z-40 flex items-center border-b border-border bg-card/95 backdrop-blur-sm">

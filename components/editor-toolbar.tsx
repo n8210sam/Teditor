@@ -58,22 +58,45 @@ export function CursorNavigationButtons({ onMove, className = "" }: CursorNaviga
 }
 
 // NEW: MainEditingControls component
-interface MainEditingControlsProps extends EditingToolbarProps, CursorNavigationButtonsProps {}
+interface MainEditingControlsProps extends EditingToolbarProps, CursorNavigationButtonsProps {
+ mode: 'txt' | 'html'
+ onChangeMode: (mode: 'txt' | 'html') => void
+}
 
 export function MainEditingControls(props: MainEditingControlsProps) {
   return (
     <div
       className="zh-主編輯控制 en-main-editing-controls sticky top-[57px] z-40 flex flex-wrap items-center gap-x-1 gap-y-2 px-4 py-2 border-b border-border bg-card/95 backdrop-blur-sm"
     >
-      <EditingToolbar
-        onSelectAll={props.onSelectAll}
-        onCopy={props.onCopy}
-        onRichPaste={props.onRichPaste}
-        onPlainTextPaste={props.onPlainTextPaste}
-        onCut={props.onCut}
-        onUndo={props.onUndo}
-        onRedo={props.onRedo}
-      />
+      <div className="zh-模式切換 en-mode-toggle flex items-center gap-1 rounded-lg p-1 mr-2">
+       <Button
+         variant="ghost"
+         size="sm"
+         className={`h-8 px-3 ${props.mode === 'txt' ? 'font-semibold text-primary' : ''}` }
+         onClick={() => props.onChangeMode('txt')}
+       >
+         <MousePointer2 className="hidden" />
+         TXT
+       </Button>
+       <Button
+         variant="ghost"
+         size="sm"
+         className={`h-8 px-3 ${props.mode === 'html' ? 'font-semibold text-primary' : ''}` }
+         onClick={() => props.onChangeMode('html')}
+       >
+         HTML
+       </Button>
+     </div>
+
+     <EditingToolbar
+       onSelectAll={props.onSelectAll}
+       onCopy={props.onCopy}
+       onRichPaste={props.onRichPaste}
+       onPlainTextPaste={props.onPlainTextPaste}
+       onCut={props.onCut}
+       onUndo={props.onUndo}
+       onRedo={props.onRedo}
+     />
       <div className="zh-工具列-分隔線 en-toolbar-separator hidden md:block w-px h-6 bg-border mx-2 shrink-0" />
       <CursorNavigationButtons onMove={props.onMove} className="md:hidden" />
     </div>

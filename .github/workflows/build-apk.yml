@@ -65,6 +65,9 @@ jobs:
             exit 1
           fi
 
+      - name: 清理舊的 Bubblewrap 專案
+        run: rm -rf .twa-project
+
       - name: 初始化 Bubblewrap 專案
         timeout-minutes: 40
         run: |
@@ -79,7 +82,12 @@ jobs:
             fi
           }
           if [ ! -d ".twa-project" ]; then
-            echo "✗ 錄目未建立"
+            echo "✗ 目錄未建立"
+            exit 1
+          fi
+          if [ ! -f ".twa-project/gradlew" ]; then
+            echo "✗ gradlew 不存在，初始化未完成"
+            ls -la .twa-project || true
             exit 1
           fi
           echo "✓ Bubblewrap 專案已初始化"
@@ -99,6 +107,7 @@ jobs:
       - name: 建置 Android APK
         run: |
           cd .twa-project
+          chmod +x ./gradlew || true
           ./gradlew build --info --stacktrace || exit 1
 
       - name: 停止伺服務器
