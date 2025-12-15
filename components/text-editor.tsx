@@ -455,8 +455,8 @@ export function TextEditor() {
   ]
 
   return (
-    <div className="flex flex-col h-full bg-background" suppressHydrationWarning>
-      <header className="sticky top-0 z-50 flex items-center justify-between px-4 py-3 border-b border-border bg-card">
+    <div className="zh-文字編輯器 en-text-editor flex flex-col h-full bg-background" suppressHydrationWarning>
+      <header className="zh-工具列-頁首 en-toolbar-header sticky top-0 z-50 flex items-center justify-between px-4 py-3 border-b border-border bg-card">
         <div className="flex items-center gap-2">
           <FileText className="h-5 w-5 text-primary" />
           <span className="font-mono text-sm font-medium">
@@ -466,7 +466,7 @@ export function TextEditor() {
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="hidden md:flex items-center gap-2">
+          <div className="zh-檔案動作 en-file-actions hidden md:flex items-center gap-2">
             {fileActions.map((action, index) => (
               <Button key={index} variant="outline" size="sm" onClick={action.handler}>
                 <action.icon className="h-4 w-4 mr-2" />
@@ -475,7 +475,7 @@ export function TextEditor() {
             ))}
           </div>
 
-          <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
+          <div className="zh-模式切換 en-mode-toggle flex items-center gap-1 bg-muted rounded-lg p-1">
             <Button
               variant={mode === "txt" ? "secondary" : "ghost"}
               size="sm"
@@ -526,12 +526,12 @@ export function TextEditor() {
       />
 
       {mode === "html" && (
-        <div className="sticky top-[105px] z-40 flex items-center border-b border-border bg-card/95 backdrop-blur-sm">
+        <div className="zh-格式化工具列 en-formatting-toolbar-wrapper sticky top-[105px] z-40 flex items-center border-b border-border bg-card/95 backdrop-blur-sm">
           <FormattingToolbar onPreview={handlePreview} onExecCommand={execCommand} />
         </div>
       )}
 
-      <div className="flex-1 overflow-auto">
+      <div className="zh-內容區 en-content-area flex-1 overflow-auto">
         {mode === "txt" ? (
           <Textarea
             ref={textareaRef}
@@ -545,7 +545,7 @@ export function TextEditor() {
             ref={editorRef}
             contentEditable
             onInput={handleEditorInput}
-            className="h-full px-4 py-3 outline-none editor-scrollbar prose prose-sm max-w-none dark:prose-invert"
+            className="zh-HTML編輯區 en-html-editor h-full px-4 py-3 outline-none editor-scrollbar prose prose-sm max-w-none dark:prose-invert"
             style={{ minHeight: "100%" }}
           />
         )}
@@ -565,7 +565,7 @@ export function TextEditor() {
               const ext = formData.get("fileExtension") as string
               handleSaveWithExtension(name, ext)
             }}
-            className="space-y-4"
+            className="zh-另存新檔表單 en-save-as-form space-y-4"
           >
             <div className="space-y-2">
               <Label htmlFor="fileName">檔案名稱</Label>

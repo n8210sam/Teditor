@@ -47,7 +47,7 @@ export function CursorNavigationButtons({ onMove, className = "" }: CursorNaviga
   ] as const
 
   return (
-    <div className={`flex items-center gap-0.5 shrink-0 ${className}`}>
+    <div className={`zh-游標導覽按鈕 en-cursor-navigation flex items-center gap-0.5 shrink-0 ${className}`}>
       {buttons.map(({ dir, label, icon: Icon }) => (
         <Button key={dir} variant="ghost" size="icon" className="h-8 w-8" onClick={() => onMove(dir)} title={label}>
           <Icon className="h-4 w-4" />
@@ -63,7 +63,7 @@ interface MainEditingControlsProps extends EditingToolbarProps, CursorNavigation
 export function MainEditingControls(props: MainEditingControlsProps) {
   return (
     <div
-      className="sticky top-[57px] z-40 flex flex-wrap items-center gap-x-1 gap-y-2 px-4 py-2 border-b border-border bg-card/95 backdrop-blur-sm"
+      className="zh-主編輯控制 en-main-editing-controls sticky top-[57px] z-40 flex flex-wrap items-center gap-x-1 gap-y-2 px-4 py-2 border-b border-border bg-card/95 backdrop-blur-sm"
     >
       <EditingToolbar
         onSelectAll={props.onSelectAll}
@@ -74,7 +74,7 @@ export function MainEditingControls(props: MainEditingControlsProps) {
         onUndo={props.onUndo}
         onRedo={props.onRedo}
       />
-      <div className="hidden md:block w-px h-6 bg-border mx-2 shrink-0" />
+      <div className="zh-工具列-分隔線 en-toolbar-separator hidden md:block w-px h-6 bg-border mx-2 shrink-0" />
       <CursorNavigationButtons onMove={props.onMove} className="md:hidden" />
     </div>
   )

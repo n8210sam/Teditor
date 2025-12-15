@@ -5,7 +5,7 @@ const TextEditor = dynamic(() => import('@/components/text-editor').then(m => m.
 
 export default function Home() {
   return (
-    <main className="h-screen w-full overflow-hidden">
+    <main className="zh-首頁-主容器 en-home-main h-screen w-full overflow-hidden">
       <TextEditor />
     </main>
   )
