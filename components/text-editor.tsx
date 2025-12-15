@@ -25,10 +25,23 @@ export function TextEditor() {
   const fileHandleRef = useRef<FileSystemFileHandle | null>(null)
   const editorRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  // simple history for TXT mode
+  const txtHistoryRef = useRef<string[]>([])
+  const txtFutureRef = useRef<string[]>([])
+  const MAX_HISTORY = 100
+  const pushTxtHistory = (val: string) => {
+    const hist = txtHistoryRef.current
+    if (hist.length === 0 || hist[hist.length - 1] !== val) {
+      hist.push(val)
+      if (hist.length > MAX_HISTORY) hist.shift()
+    }
+    txtFutureRef.current.length = 0
+  }
 
   const execCommand = useCallback((command: string, value?: string) => {
-    document.execCommand(command, false, value)
+    // Ensure the editable element is focused before executing the command
     editorRef.current?.focus()
+    document.execCommand(command, false, value)
   }, [])
 
   const handleEditorInput = useCallback(() => {
@@ -208,11 +221,6 @@ export function TextEditor() {
     editorRef.current?.focus(); 
     try {
         if (mode === 'html') {
-            const selection = window.getSelection();
-            if (!selection?.rangeCount) return;
-            const range = selection.getRangeAt(0);
-            range.deleteContents();
-
             const clipboardItems = await navigator.clipboard.read();
             let foundHtml = false;
 
@@ -226,20 +234,8 @@ export function TextEditor() {
                     doc.body.querySelectorAll('*').forEach(el => el.removeAttribute('style'));
                     
                     const sanitizedHtml = doc.body.innerHTML;
-                    const fragment = range.createContextualFragment(sanitizedHtml);
-                    
-                    const leadingNewline = document.createTextNode('\n');
-                    const trailingNewline = document.createTextNode('\n');
-                    
-                    range.insertNode(trailingNewline);
-                    range.insertNode(fragment);
-                    range.insertNode(leadingNewline);
-                    
-                    range.setStartAfter(trailingNewline);
-                    range.collapse(true);
-                    selection.removeAllRanges();
-                    selection.addRange(range);
-                    
+                    // Use execCommand to ensure the operation participates in the browser undo stack
+                    document.execCommand('insertHTML', false, '\n' + sanitizedHtml + '\n');
                     foundHtml = true;
                     break;
                 }
@@ -247,20 +243,16 @@ export function TextEditor() {
 
             if (!foundHtml) {
                 const textToPaste = await navigator.clipboard.readText();
-                const textNode = document.createTextNode('\n' + textToPaste + '\n');
-                range.insertNode(textNode);
-                range.setStartAfter(textNode);
-                range.collapse(true);
-                selection.removeAllRanges();
-                selection.addRange(range);
+                document.execCommand('insertText', false, '\n' + textToPaste + '\n');
             }
-            handleEditorInput(); // Manually trigger state update
+            handleEditorInput(); // sync state
         } else { // Text mode
             const textToPaste = await navigator.clipboard.readText();
             const ta = textareaRef.current;
             if (ta) {
                 const start = ta.selectionStart;
                 const end = ta.selectionEnd;
+                pushTxtHistory(content);
                 setContent(prev => prev.slice(0, start) + textToPaste + prev.slice(end));
                 requestAnimationFrame(() => {
                     ta.selectionStart = ta.selectionEnd = start + textToPaste.length;
@@ -297,6 +289,7 @@ export function TextEditor() {
               if (ta) {
                   const start = ta.selectionStart;
                   const end = ta.selectionEnd;
+                  pushTxtHistory(content);
                   setContent(prev => prev.slice(0, start) + textToPaste + prev.slice(end));
                   requestAnimationFrame(() => {
                       ta.selectionStart = ta.selectionEnd = start + textToPaste.length;
@@ -316,6 +309,7 @@ export function TextEditor() {
         const end = ta.selectionEnd
         if (start === end) return
         await navigator.clipboard.writeText(ta.value.substring(start, end))
+        pushTxtHistory(content)
         setContent(ta.value.slice(0, start) + ta.value.slice(end))
         requestAnimationFrame(() => {
           ta.focus()
@@ -330,12 +324,48 @@ export function TextEditor() {
   }, [mode, execCommand])
 
   const handleUndo = useCallback(() => {
-    if (mode === "html") execCommand("undo")
-  }, [mode, execCommand])
+    if (mode === "html") {
+      execCommand("undo")
+      return
+    }
+    if (mode === "txt") {
+      const prev = txtHistoryRef.current.pop()
+      if (prev !== undefined) {
+        txtFutureRef.current.push(content)
+        setContent(prev)
+        requestAnimationFrame(() => {
+          const ta = textareaRef.current
+          if (ta) {
+            const pos = Math.min(prev.length, ta.value.length)
+            ta.selectionStart = ta.selectionEnd = pos
+            ta.focus()
+          }
+        })
+      }
+    }
+  }, [mode, execCommand, content])
 
   const handleRedo = useCallback(() => {
-    if (mode === "html") execCommand("redo")
-  }, [mode, execCommand])
+    if (mode === "html") {
+      execCommand("redo")
+      return
+    }
+    if (mode === "txt") {
+      const next = txtFutureRef.current.pop()
+      if (next !== undefined) {
+        txtHistoryRef.current.push(content)
+        setContent(next)
+        requestAnimationFrame(() => {
+          const ta = textareaRef.current
+          if (ta) {
+            const pos = Math.min(next.length, ta.value.length)
+            ta.selectionStart = ta.selectionEnd = pos
+            ta.focus()
+          }
+        })
+      }
+    }
+  }, [mode, execCommand, content])
 
   const moveCursor = useCallback(
     (direction: "start" | "left" | "up" | "down" | "right" | "end") => {
@@ -398,10 +428,25 @@ export function TextEditor() {
         e.preventDefault()
         handleOpenFile()
       }
+      // Undo / Redo for TXT mode via keyboard
+      if (mode === 'txt' && (e.metaKey || e.ctrlKey)) {
+        const key = e.key.toLowerCase()
+        if (key === 'z') {
+          e.preventDefault()
+          if (e.shiftKey) {
+            handleRedo()
+          } else {
+            handleUndo()
+          }
+        } else if (key === 'y') {
+          e.preventDefault()
+          handleRedo()
+        }
+      }
     }
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [handleQuickSave, handleOpenFile])
+  }, [handleQuickSave, handleOpenFile, mode, handleUndo, handleRedo])
 
   const fileActions = [
     { label: "新增", icon: FileUp, handler: handleNewFile },
@@ -475,6 +520,8 @@ export function TextEditor() {
         onCut={handleCut}
         onUndo={handleUndo}
         onRedo={handleRedo}
+        undoDisabled={mode === 'txt' ? txtHistoryRef.current.length === 0 : false}
+        redoDisabled={mode === 'txt' ? txtFutureRef.current.length === 0 : false}
         onMove={moveCursor}
       />
 
@@ -489,7 +536,7 @@ export function TextEditor() {
           <Textarea
             ref={textareaRef}
             value={content}
-            onChange={(e) => setContent(e.target.value)}
+            onChange={(e) => { pushTxtHistory(content); setContent(e.target.value) }}
             placeholder="輸入文字..."
             className="h-full resize-none rounded-none border-0 font-mono text-sm leading-relaxed editor-scrollbar focus-visible:ring-0"
           />

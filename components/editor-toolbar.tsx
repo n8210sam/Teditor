@@ -12,17 +12,18 @@ interface ActionButtonProps {
   label: string
   onClick: () => void
   icon: React.ElementType
+  disabled?: boolean
 }
 
-const ActionButton: React.FC<ActionButtonProps> = ({ label, onClick, icon: Icon }) => (
-  <Button variant="ghost" size="sm" className="h-8 shrink-0" onClick={onClick} title={label}>
+const ActionButton: React.FC<ActionButtonProps> = ({ label, onClick, icon: Icon, disabled }) => (
+  <Button variant="ghost" size="sm" className="h-8 shrink-0" onClick={onClick} title={label} disabled={disabled}>
     <Icon className="h-4 w-4 md:mr-1" />
     <span className="hidden md:inline">{label}</span>
   </Button>
 )
 
-const IconOnlyButton: React.FC<ActionButtonProps> = ({ label, onClick, icon: Icon }) => (
-  <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onClick} title={label}>
+const IconOnlyButton: React.FC<ActionButtonProps> = ({ label, onClick, icon: Icon, disabled }) => (
+  <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={onClick} title={label} disabled={disabled}>
     <Icon className="h-4 w-4" />
   </Button>
 )
@@ -88,6 +89,8 @@ interface EditingToolbarProps {
   onCut: () => void
   onUndo: () => void
   onRedo: () => void
+  undoDisabled?: boolean
+  redoDisabled?: boolean
 }
 
 export function EditingToolbar(props: EditingToolbarProps) {
@@ -97,8 +100,8 @@ export function EditingToolbar(props: EditingToolbarProps) {
     { label: "貼上", onClick: props.onRichPaste, icon: ClipboardPaste },
     { label: "純文字貼上", onClick: props.onPlainTextPaste, icon: ClipboardList },
     { label: "剪下", onClick: props.onCut, icon: Scissors },
-    { label: "復原", onClick: props.onUndo, icon: Undo2 },
-    { label: "重做", onClick: props.onRedo, icon: Redo2 },
+    { label: "復原", onClick: props.onUndo, icon: Undo2, disabled: props.undoDisabled },
+    { label: "重做", onClick: props.onRedo, icon: Redo2, disabled: props.redoDisabled },
   ]
   return (
     <>
