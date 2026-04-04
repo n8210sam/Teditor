@@ -28,6 +28,9 @@ export function TextEditor() {
   // simple history for TXT mode
   const txtHistoryRef = useRef<string[]>([])
   const txtFutureRef = useRef<string[]>([])
+  // HTML 模式也維持自有歷史，避免依賴瀏覽器 undo stack 在切換節點後遺失
+  const htmlHistoryRef = useRef<string[]>([])
+  const htmlFutureRef = useRef<string[]>([])
   const MAX_HISTORY = 100
   const pushTxtHistory = (val: string) => {
     const hist = txtHistoryRef.current
@@ -37,18 +40,30 @@ export function TextEditor() {
     }
     txtFutureRef.current.length = 0
   }
+  const pushHtmlHistory = (val: string) => {
+    const hist = htmlHistoryRef.current
+    if (hist.length === 0 || hist[hist.length - 1] !== val) {
+      hist.push(val)
+      if (hist.length > MAX_HISTORY) hist.shift()
+    }
+    htmlFutureRef.current.length = 0
+  }
+
+  const handleEditorInput = useCallback(() => {
+    if (editorRef.current) {
+      // 在 HTML 模式，先推入舊內容到歷史，再同步新內容
+      pushHtmlHistory(content)
+      setContent(editorRef.current.innerHTML)
+    }
+  }, [content])
 
   const execCommand = useCallback((command: string, value?: string) => {
     // Ensure the editable element is focused before executing the command
     editorRef.current?.focus()
     document.execCommand(command, false, value)
-  }, [])
-
-  const handleEditorInput = useCallback(() => {
-    if (editorRef.current) {
-      setContent(editorRef.current.innerHTML)
-    }
-  }, [])
+    // 執行後同步內容與歷史
+    handleEditorInput()
+  }, [handleEditorInput])
 
   useEffect(() => {
     if (mode === "html" && editorRef.current && editorRef.current.innerHTML !== content) {
@@ -218,87 +233,87 @@ export function TextEditor() {
   }, [mode])
 
   const handleRichPaste = useCallback(async () => {
-    editorRef.current?.focus(); 
+    editorRef.current?.focus();
     try {
-        if (mode === 'html') {
-            const clipboardItems = await navigator.clipboard.read();
-            let foundHtml = false;
+      if (mode === 'html') {
+        const clipboardItems = await navigator.clipboard.read();
+        let foundHtml = false;
 
-            for (const item of clipboardItems) {
-                if (item.types.includes('text/html')) {
-                    const blob = await item.getType('text/html');
-                    const html = await blob.text();
-                    
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, 'text/html');
-                    doc.body.querySelectorAll('*').forEach(el => el.removeAttribute('style'));
-                    
-                    const sanitizedHtml = doc.body.innerHTML;
-                    // Use execCommand to ensure the operation participates in the browser undo stack
-                    document.execCommand('insertHTML', false, '\n' + sanitizedHtml + '\n');
-                    foundHtml = true;
-                    break;
-                }
-            }
+        for (const item of clipboardItems) {
+          if (item.types.includes('text/html')) {
+            const blob = await item.getType('text/html');
+            const html = await blob.text();
 
-            if (!foundHtml) {
-                const textToPaste = await navigator.clipboard.readText();
-                document.execCommand('insertText', false, '\n' + textToPaste + '\n');
-            }
-            handleEditorInput(); // sync state
-        } else { // Text mode
-            const textToPaste = await navigator.clipboard.readText();
-            const ta = textareaRef.current;
-            if (ta) {
-                const start = ta.selectionStart;
-                const end = ta.selectionEnd;
-                pushTxtHistory(content);
-                setContent(prev => prev.slice(0, start) + textToPaste + prev.slice(end));
-                requestAnimationFrame(() => {
-                    ta.selectionStart = ta.selectionEnd = start + textToPaste.length;
-                });
-            }
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            doc.body.querySelectorAll('*').forEach(el => el.removeAttribute('style'));
+
+            const sanitizedHtml = doc.body.innerHTML;
+            // Use execCommand to ensure the operation participates in the browser undo stack
+            document.execCommand('insertHTML', false, '\n' + sanitizedHtml + '\n');
+            foundHtml = true;
+            break;
+          }
         }
+
+        if (!foundHtml) {
+          const textToPaste = await navigator.clipboard.readText();
+          document.execCommand('insertText', false, '\n' + textToPaste + '\n');
+        }
+        handleEditorInput(); // sync state
+      } else { // Text mode
+        const textToPaste = await navigator.clipboard.readText();
+        const ta = textareaRef.current;
+        if (ta) {
+          const start = ta.selectionStart;
+          const end = ta.selectionEnd;
+          pushTxtHistory(content);
+          setContent(prev => prev.slice(0, start) + textToPaste + prev.slice(end));
+          requestAnimationFrame(() => {
+            ta.selectionStart = ta.selectionEnd = start + textToPaste.length;
+          });
+        }
+      }
     } catch (err) {
-        console.error("Rich paste failed:", err);
+      console.error("Rich paste failed:", err);
     }
   }, [mode, handleEditorInput]);
 
   const handlePlainTextPaste = useCallback(async () => {
-      editorRef.current?.focus();
-      try {
-          const textToPaste = await navigator.clipboard.readText();
-          if (mode === 'html') {
-              const selection = window.getSelection();
-              if (!selection?.rangeCount) return;
+    editorRef.current?.focus();
+    try {
+      const textToPaste = await navigator.clipboard.readText();
+      if (mode === 'html') {
+        const selection = window.getSelection();
+        if (!selection?.rangeCount) return;
 
-              const range = selection.getRangeAt(0);
-              range.deleteContents();
+        const range = selection.getRangeAt(0);
+        range.deleteContents();
 
-              const textNode = document.createTextNode('\n' + textToPaste + '\n');
-              range.insertNode(textNode);
+        const textNode = document.createTextNode('\n' + textToPaste + '\n');
+        range.insertNode(textNode);
 
-              // Move cursor to the end of the inserted text
-              range.setStartAfter(textNode);
-              range.collapse(true);
-              selection.removeAllRanges();
-              selection.addRange(range);
-              handleEditorInput(); // Manually trigger state update
-          } else { // Text mode
-              const ta = textareaRef.current;
-              if (ta) {
-                  const start = ta.selectionStart;
-                  const end = ta.selectionEnd;
-                  pushTxtHistory(content);
-                  setContent(prev => prev.slice(0, start) + textToPaste + prev.slice(end));
-                  requestAnimationFrame(() => {
-                      ta.selectionStart = ta.selectionEnd = start + textToPaste.length;
-                  });
-              }
-          }
-      } catch (err) {
-          console.error("Plain text paste failed:", err);
+        // Move cursor to the end of the inserted text
+        range.setStartAfter(textNode);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        handleEditorInput(); // Manually trigger state update
+      } else { // Text mode
+        const ta = textareaRef.current;
+        if (ta) {
+          const start = ta.selectionStart;
+          const end = ta.selectionEnd;
+          pushTxtHistory(content);
+          setContent(prev => prev.slice(0, start) + textToPaste + prev.slice(end));
+          requestAnimationFrame(() => {
+            ta.selectionStart = ta.selectionEnd = start + textToPaste.length;
+          });
+        }
       }
+    } catch (err) {
+      console.error("Plain text paste failed:", err);
+    }
   }, [mode, handleEditorInput]);
 
   const handleCut = useCallback(async () => {
@@ -323,9 +338,33 @@ export function TextEditor() {
     }
   }, [mode, execCommand])
 
+  const handleDelete = useCallback(() => {
+    if (mode === "txt" && textareaRef.current) {
+      const ta = textareaRef.current
+      const start = ta.selectionStart
+      const end = ta.selectionEnd
+      if (start === end) return
+      pushTxtHistory(content)
+      setContent(ta.value.slice(0, start) + ta.value.slice(end))
+      requestAnimationFrame(() => {
+        ta.focus()
+        ta.setSelectionRange(start, start)
+      })
+    } else {
+      execCommand("delete")
+    }
+  }, [mode, execCommand])
+
   const handleUndo = useCallback(() => {
     if (mode === "html") {
-      execCommand("undo")
+      const prev = htmlHistoryRef.current.pop()
+      if (prev !== undefined) {
+        htmlFutureRef.current.push(content)
+        setContent(prev)
+        requestAnimationFrame(() => {
+          editorRef.current?.focus()
+        })
+      }
       return
     }
     if (mode === "txt") {
@@ -343,11 +382,18 @@ export function TextEditor() {
         })
       }
     }
-  }, [mode, execCommand, content])
+  }, [mode, content])
 
   const handleRedo = useCallback(() => {
     if (mode === "html") {
-      execCommand("redo")
+      const next = htmlFutureRef.current.pop()
+      if (next !== undefined) {
+        htmlHistoryRef.current.push(content)
+        setContent(next)
+        requestAnimationFrame(() => {
+          editorRef.current?.focus()
+        })
+      }
       return
     }
     if (mode === "txt") {
@@ -365,7 +411,7 @@ export function TextEditor() {
         })
       }
     }
-  }, [mode, execCommand, content])
+  }, [mode, content])
 
   const moveCursor = useCallback(
     (direction: "start" | "left" | "up" | "down" | "right" | "end") => {
@@ -428,8 +474,8 @@ export function TextEditor() {
         e.preventDefault()
         handleOpenFile()
       }
-      // Undo / Redo for TXT mode via keyboard
-      if (mode === 'txt' && (e.metaKey || e.ctrlKey)) {
+      // Undo / Redo for both modes via keyboard，HTML 模式也改為自管堆疊
+      if ((e.metaKey || e.ctrlKey)) {
         const key = e.key.toLowerCase()
         if (key === 'z') {
           e.preventDefault()
@@ -446,7 +492,7 @@ export function TextEditor() {
     }
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [handleQuickSave, handleOpenFile, mode, handleUndo, handleRedo])
+  }, [handleQuickSave, handleOpenFile, handleUndo, handleRedo])
 
   const fileActions = [
     { label: "新增", icon: FileUp, handler: handleNewFile },
@@ -494,19 +540,20 @@ export function TextEditor() {
       </header>
 
       <MainEditingControls
-       onSelectAll={handleSelectAll}
-       onCopy={handleCopy}
-       onRichPaste={handleRichPaste}
-       onPlainTextPaste={handlePlainTextPaste}
-       onCut={handleCut}
-       onUndo={handleUndo}
-       onRedo={handleRedo}
-       undoDisabled={mode === 'txt' ? txtHistoryRef.current.length === 0 : false}
-       redoDisabled={mode === 'txt' ? txtFutureRef.current.length === 0 : false}
-       onMove={moveCursor}
-       mode={mode}
-       onChangeMode={setMode}
-     />
+        onSelectAll={handleSelectAll}
+        onCopy={handleCopy}
+        onRichPaste={handleRichPaste}
+        onPlainTextPaste={handlePlainTextPaste}
+        onCut={handleCut}
+        onDelete={handleDelete}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        undoDisabled={mode === 'txt' ? txtHistoryRef.current.length === 0 : htmlHistoryRef.current.length === 0}
+        redoDisabled={mode === 'txt' ? txtFutureRef.current.length === 0 : htmlFutureRef.current.length === 0}
+        onMove={moveCursor}
+        mode={mode}
+        onChangeMode={setMode}
+      />
 
       {mode === "html" && (
         <div className="zh-格式化工具列 en-formatting-toolbar-wrapper sticky top-[105px] z-40 flex items-center border-b border-border bg-card/95 backdrop-blur-sm">

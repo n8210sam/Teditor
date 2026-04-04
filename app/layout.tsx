@@ -53,7 +53,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="zh-TW" className="dark">
+    <html lang="zh-TW" className="dark" suppressHydrationWarning>
       <body className={`font-sans antialiased`}>
         {children}
         <ConditionalAnalytics />
