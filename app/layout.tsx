@@ -47,6 +47,8 @@ export const viewport: Viewport = {
   userScalable: false,
 }
 
+import { UpdatePrompt } from "@/components/update-prompt"
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -54,7 +56,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-TW" className="dark" suppressHydrationWarning>
-      <body className={`font-sans antialiased`}>
+      <body className={`font-sans antialiased h-screen flex flex-col`}>
+        <UpdatePrompt />
         {children}
         <ConditionalAnalytics />
       </body>

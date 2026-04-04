@@ -4,15 +4,34 @@
   "description": "支援 TXT 和 HTML 編輯與預覽的 PWA 文字編輯器",
   "dir": "ltr",
   "display": "standalone",
-  "orientation": "any",
+  "_comment_orientation": "已移除 orientation:any 欄位以允許 APP 跟隨手機系統本身的旋轉鎖定設定。若設定為 'any'，APP 會無視系統鎖定而任意旋轉。",
   "start_url": ".",
   "scope": ".",
   "background_color": "#ffffff",
   "theme_color": "#ffffff",
   "icons": [
-    { "src": "icon-light-32x32.png", "sizes": "32x32", "type": "image/png", "purpose": "any" },
-    { "src": "icon-dark-32x32.png", "sizes": "32x32", "type": "image/png", "purpose": "any" },
-    { "src": "apple-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any" },
-    { "src": "icon.svg", "type": "image/svg+xml", "purpose": "any" }
+    {
+      "src": "icon-light-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-dark-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "apple-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon.svg",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
   ]
 }
