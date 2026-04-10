@@ -1,10 +1,15 @@
 name: Deploy to GitHub Pages
 
 on:
+  workflow_dispatch: # 允許手動執行
   push:
-    branches: [ main, master ]
-  workflow_dispatch:
-
+    branches:
+      # 不想每次小改都觸發 GitHub Actions ，故移除 branches:[ main, master ] ，若保留這個設定，則可在 commit 時加入 [skip ci]、[ci skip]、[skip actions]、[actions skip]、[no ci] 等關鍵字來跳過當次執行，例如： git commit -m "小改版文字修正 [skip ci]"
+      - 'release/*' # 只有當 push 到 release/ 開頭的分支才執行
+    paths-ignore: # 忽略以下檔案的變更，不觸發 GitHub Actions
+      - 'README.md'
+      - 'docs/**'
+      - '.gitignore'
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
   contents: read

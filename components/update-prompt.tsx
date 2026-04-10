@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
+import { X } from "lucide-react"
 
 export function UpdatePrompt() {
     const [needUpdate, setNeedUpdate] = useState(false)
@@ -45,7 +46,7 @@ export function UpdatePrompt() {
         if (needUpdate) {
             const timer = setTimeout(() => {
                 setNeedUpdate(false)
-            }, 5000)
+            }, 60000) // 1 分鐘後自動關閉
             return () => clearTimeout(timer)
         }
     }, [needUpdate])
@@ -59,18 +60,31 @@ export function UpdatePrompt() {
         }
     }
 
+    const handleClose = () => {
+        setNeedUpdate(false)
+    }
+
     // 使用非 fixed layout 讓此區塊實際佔用空間，並置於最頂部
     return (
-        <div className="w-full bg-blue-600 text-white text-sm px-4 py-2 flex flex-row items-center justify-between shrink-0">
-            <span>發現新版本，點擊更新以體驗最新功能。</span>
-            <Button
-                onClick={handleUpdate}
-                variant="secondary"
-                size="sm"
-                className="h-7 px-3 text-xs bg-white text-blue-600 hover:bg-gray-100"
+        <div className="w-full bg-blue-600 text-white text-sm px-4 py-2 flex flex-row items-center justify-between shrink-0 gap-2">
+            <div className="flex flex-row items-center gap-4 flex-1">
+                <span>發現新版本，點擊更新以體驗最新功能。</span>
+                <Button
+                    onClick={handleUpdate}
+                    variant="secondary"
+                    size="sm"
+                    className="h-7 px-3 text-xs bg-white text-blue-600 hover:bg-gray-100"
+                >
+                    立即更新
+                </Button>
+            </div>
+            <button
+                onClick={handleClose}
+                className="hover:bg-blue-700 rounded-full p-1 transition-colors"
+                aria-label="關閉提示"
             >
-                立即更新
-            </Button>
+                <X className="h-4 w-4" />
+            </button>
         </div>
     )
 }

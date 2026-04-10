@@ -1,9 +1,11 @@
 import withSerwistInit from "@serwist/next";
 
+const isDev = process.env.NODE_ENV === 'development';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Enable static export for GitHub Pages
-  output: 'export',
+  output: isDev ? undefined : 'export',
 
   // Always use basePath to match production (GitHub Pages subpath)
   basePath: '/Teditor',
@@ -15,6 +17,18 @@ const nextConfig = {
     unoptimized: true,
   },
   turbopack: {},
+
+  async redirects() {
+    if (!isDev) return [];
+    return [
+      {
+        source: '/',
+        destination: '/Teditor',
+        basePath: false,
+        permanent: false,
+      },
+    ];
+  },
 }
 
 const withSerwist = withSerwistInit({

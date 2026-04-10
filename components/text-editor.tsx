@@ -5,17 +5,19 @@ import type React from "react"
 import { useState, useRef, useCallback, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { FileText, Code, Upload, FileUp, MoreVertical } from "lucide-react"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { FileText, Code, Upload, FileUp, MoreVertical, RefreshCw } from "lucide-react"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useLocalStorage } from "usehooks-ts"
+import { usePWAUpdate } from "@/hooks/use-pwa-update"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { EditingToolbar, FormattingToolbar, CursorNavigationButtons, MainEditingControls } from "./editor-toolbar"
 
 type EditorMode = "txt" | "html"
 
 export function TextEditor() {
+  const { needUpdate, updateApp } = usePWAUpdate()
   const [content, setContent] = useLocalStorage("editor_content", "")
   const [mode, setMode] = useLocalStorage<EditorMode>("editor_mode", "txt")
   const [fileName, setFileName] = useLocalStorage("editor_fileName", "untitled")
@@ -219,141 +221,164 @@ export function TextEditor() {
   }, [mode])
 
   const handleCopy = useCallback(async () => {
-    if (mode === "txt" && textareaRef.current) {
+    const target = mode === "txt" ? textareaRef.current : editorRef.current
+    if (!target) return
+
+    if (mode === "txt" && target instanceof HTMLTextAreaElement) {
       try {
-        const ta = textareaRef.current
-        const selected = ta.value.substring(ta.selectionStart, ta.selectionEnd)
-        await navigator.clipboard.writeText(selected || ta.value)
+        const selected = target.value.substring(target.selectionStart, target.selectionEnd)
+        await navigator.clipboard.writeText(selected || target.value)
+        target.focus() // 保持焦點以維持選取反白
       } catch (err) {
         console.log("TXT copy failed:", err)
       }
     } else {
+      target.focus()
       document.execCommand("copy")
     }
   }, [mode])
 
   const handleRichPaste = useCallback(async () => {
-    editorRef.current?.focus();
+    const target = mode === "txt" ? textareaRef.current : editorRef.current
+    if (!target) return
+    target.focus()
+
     try {
       if (mode === 'html') {
-        const clipboardItems = await navigator.clipboard.read();
-        let foundHtml = false;
+        const clipboardItems = await navigator.clipboard.read()
+        let foundHtml = false
 
         for (const item of clipboardItems) {
           if (item.types.includes('text/html')) {
-            const blob = await item.getType('text/html');
-            const html = await blob.text();
+            const blob = await item.getType('text/html')
+            const html = await blob.text()
 
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
-            doc.body.querySelectorAll('*').forEach(el => el.removeAttribute('style'));
+            const parser = new DOMParser()
+            const doc = parser.parseFromString(html, 'text/html')
+            doc.body.querySelectorAll('*').forEach(el => el.removeAttribute('style'))
 
-            const sanitizedHtml = doc.body.innerHTML;
-            // Use execCommand to ensure the operation participates in the browser undo stack
-            document.execCommand('insertHTML', false, '\n' + sanitizedHtml + '\n');
-            foundHtml = true;
-            break;
+            const sanitizedHtml = doc.body.innerHTML
+            document.execCommand('insertHTML', false, '\n' + sanitizedHtml + '\n')
+            foundHtml = true
+            break
           }
         }
 
         if (!foundHtml) {
-          const textToPaste = await navigator.clipboard.readText();
-          document.execCommand('insertText', false, '\n' + textToPaste + '\n');
+          const textToPaste = await navigator.clipboard.readText()
+          document.execCommand('insertText', false, '\n' + textToPaste + '\n')
         }
-        handleEditorInput(); // sync state
+        handleEditorInput()
       } else { // Text mode
-        const textToPaste = await navigator.clipboard.readText();
-        const ta = textareaRef.current;
-        if (ta) {
-          const start = ta.selectionStart;
-          const end = ta.selectionEnd;
-          pushTxtHistory(content);
-          setContent(prev => prev.slice(0, start) + textToPaste + prev.slice(end));
-          requestAnimationFrame(() => {
-            ta.selectionStart = ta.selectionEnd = start + textToPaste.length;
-          });
+        const textToPaste = await navigator.clipboard.readText()
+        // 使用 execCommand('insertText') 自動處理選區取代、光標位置與 Undo 歷史
+        const success = document.execCommand('insertText', false, textToPaste)
+        
+        // 如果 execCommand 失敗（某些瀏覽器限制），則回退到手動更新
+        if (!success) {
+          const ta = target as HTMLTextAreaElement
+          const start = ta.selectionStart
+          const end = ta.selectionEnd
+          pushTxtHistory(content)
+          const newContent = content.slice(0, start) + textToPaste + content.slice(end)
+          setContent(newContent)
+          setTimeout(() => {
+            ta.focus()
+            const newPos = start + textToPaste.length
+            ta.setSelectionRange(newPos, newPos)
+          }, 0)
+        } else {
+          // execCommand 會觸發 onChange，但如果是受控組件可能需要手動觸發一次狀態同步
+          // 這裡由於 Textarea 的 value={content} 是受控的，我們需要確保內容同步回狀態
+          setContent((target as HTMLTextAreaElement).value)
         }
       }
     } catch (err) {
-      console.error("Rich paste failed:", err);
+      console.error("Rich paste failed:", err)
     }
-  }, [mode, handleEditorInput]);
+  }, [mode, content, setContent, handleEditorInput])
 
   const handlePlainTextPaste = useCallback(async () => {
-    editorRef.current?.focus();
+    const target = mode === "txt" ? textareaRef.current : editorRef.current
+    if (!target) return
+    target.focus()
+
     try {
-      const textToPaste = await navigator.clipboard.readText();
+      const textToPaste = await navigator.clipboard.readText()
       if (mode === 'html') {
-        const selection = window.getSelection();
-        if (!selection?.rangeCount) return;
+        const selection = window.getSelection()
+        if (!selection?.rangeCount) return
 
-        const range = selection.getRangeAt(0);
-        range.deleteContents();
+        const range = selection.getRangeAt(0)
+        range.deleteContents()
 
-        const textNode = document.createTextNode('\n' + textToPaste + '\n');
-        range.insertNode(textNode);
+        const textNode = document.createTextNode('\n' + textToPaste + '\n')
+        range.insertNode(textNode)
 
-        // Move cursor to the end of the inserted text
-        range.setStartAfter(textNode);
-        range.collapse(true);
-        selection.removeAllRanges();
-        selection.addRange(range);
-        handleEditorInput(); // Manually trigger state update
+        range.setStartAfter(textNode)
+        range.collapse(true)
+        selection.removeAllRanges()
+        selection.addRange(range)
+        handleEditorInput()
       } else { // Text mode
-        const ta = textareaRef.current;
-        if (ta) {
-          const start = ta.selectionStart;
-          const end = ta.selectionEnd;
-          pushTxtHistory(content);
-          setContent(prev => prev.slice(0, start) + textToPaste + prev.slice(end));
-          requestAnimationFrame(() => {
-            ta.selectionStart = ta.selectionEnd = start + textToPaste.length;
-          });
+        const success = document.execCommand('insertText', false, textToPaste)
+        if (!success) {
+          const ta = target as HTMLTextAreaElement
+          const start = ta.selectionStart
+          const end = ta.selectionEnd
+          pushTxtHistory(content)
+          const newContent = content.slice(0, start) + textToPaste + content.slice(end)
+          setContent(newContent)
+          setTimeout(() => {
+            ta.focus()
+            const newPos = start + textToPaste.length
+            ta.setSelectionRange(newPos, newPos)
+          }, 0)
+        } else {
+          setContent((target as HTMLTextAreaElement).value)
         }
       }
     } catch (err) {
-      console.error("Plain text paste failed:", err);
+      console.error("Plain text paste failed:", err)
     }
-  }, [mode, handleEditorInput]);
+  }, [mode, content, setContent, handleEditorInput])
 
   const handleCut = useCallback(async () => {
-    if (mode === "txt" && textareaRef.current) {
+    const target = mode === "txt" ? textareaRef.current : editorRef.current
+    if (!target) return
+    target.focus()
+
+    if (mode === "txt" && target instanceof HTMLTextAreaElement) {
       try {
-        const ta = textareaRef.current
-        const start = ta.selectionStart
-        const end = ta.selectionEnd
+        const start = target.selectionStart
+        const end = target.selectionEnd
         if (start === end) return
-        await navigator.clipboard.writeText(ta.value.substring(start, end))
+        await navigator.clipboard.writeText(target.value.substring(start, end))
         pushTxtHistory(content)
-        setContent(ta.value.slice(0, start) + ta.value.slice(end))
-        requestAnimationFrame(() => {
-          ta.focus()
-          ta.setSelectionRange(start, start)
-        })
+        // 使用 execCommand('delete') 以維持正確的插入點行為與 Undo 歷史
+        document.execCommand('delete')
+        setContent(target.value)
       } catch (err) {
         console.log("TXT cut failed:", err)
       }
     } else {
       execCommand("cut")
     }
-  }, [mode, execCommand])
+  }, [mode, content, setContent, execCommand])
 
   const handleDelete = useCallback(() => {
-    if (mode === "txt" && textareaRef.current) {
-      const ta = textareaRef.current
-      const start = ta.selectionStart
-      const end = ta.selectionEnd
-      if (start === end) return
+    const target = mode === "txt" ? textareaRef.current : editorRef.current
+    if (!target) return
+    target.focus()
+
+    if (mode === "txt" && target instanceof HTMLTextAreaElement) {
       pushTxtHistory(content)
-      setContent(ta.value.slice(0, start) + ta.value.slice(end))
-      requestAnimationFrame(() => {
-        ta.focus()
-        ta.setSelectionRange(start, start)
-      })
+      document.execCommand('delete')
+      setContent(target.value)
     } else {
       execCommand("delete")
     }
-  }, [mode, execCommand])
+  }, [mode, content, setContent, execCommand])
 
   const handleUndo = useCallback(() => {
     if (mode === "html") {
@@ -519,6 +544,17 @@ export function TextEditor() {
                 {action.label}
               </Button>
             ))}
+            <div className="w-px h-6 bg-border mx-1" />
+            <Button
+              variant={needUpdate ? "default" : "outline"}
+              size="sm"
+              onClick={updateApp}
+              disabled={!needUpdate}
+              className={needUpdate ? "bg-blue-600 hover:bg-blue-700 text-white animate-pulse" : ""}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${needUpdate ? "animate-spin" : ""}`} />
+              版本更新
+            </Button>
           </div>
 
           <DropdownMenu>
@@ -534,6 +570,15 @@ export function TextEditor() {
                   {action.label}
                 </DropdownMenuItem>
               ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={updateApp}
+                disabled={!needUpdate}
+                className={needUpdate ? "text-blue-600 font-semibold" : ""}
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${needUpdate ? "animate-spin" : ""}`} />
+                版本更新
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
